@@ -1,4 +1,4 @@
-import { login } from './actions'
+import { login, resetPassword } from './actions'
 import styles from './page.module.css'
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
@@ -39,22 +39,26 @@ export default async function LoginPage({
             />
           </div>
           <div className={styles.inputGroup}>
-            <label htmlFor="password" className={styles.label}>Password</label>
+            <label htmlFor="password" className={styles.label}>Password (leave blank if resetting)</label>
             <input
               className={styles.input}
               id="password"
               name="password"
               type="password"
-              required
             />
           </div>
           
-          <button formAction={login} className={styles.button}>
-            Sign In
-          </button>
+          <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+            <button formAction={login} className={styles.button} style={{ flex: 1 }}>
+              Sign In
+            </button>
+            <button formAction={resetPassword} className={styles.button} style={{ flex: 1, backgroundColor: '#6b7280' }}>
+              Forgot Password
+            </button>
+          </div>
           
           {resolvedSearchParams?.message && (
-            <p className={styles.error}>{resolvedSearchParams.message}</p>
+            <p className={styles.error} style={{ marginTop: '1rem' }}>{resolvedSearchParams.message}</p>
           )}
         </form>
       </div>
