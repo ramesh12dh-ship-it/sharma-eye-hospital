@@ -1,5 +1,6 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
+import ExportButton from './ExportButton'
 import styles from './reports.module.css'
 
 export default async function ReportsPage() {
@@ -58,9 +59,21 @@ export default async function ReportsPage() {
   const totalSales = sales?.reduce((sum, sale) => sum + getAccountPrice(sale), 0) || 0
   const totalTax = sales?.reduce((sum, sale) => sum + (getAccountPrice(sale) * Number(sale.tax_rate) / 100), 0) || 0
 
+  // Format data specifically for clean CSV export
+  const exportData = sales?.map(sale => ({
+    "Date": new Date(sale.sale_date).toLocaleString(),
+    "Product Code": sale.product_code,
+    "Payment Mode": sale.payment_mode,
+    "Tax Rate (%)": sale.tax_rate,
+    "Amount (Accounts)": getAccountPrice(sale)
+  })) || []
+
   return (
     <div>
-      <h1 className={styles.title}>Financial Reports</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+        <h1 className={styles.title} style={{ marginBottom: 0 }}>Financial Reports</h1>
+        <ExportButton data={exportData} filename="financial_reports_export.csv" className={styles.exportBtn} />
+      </div>
 
       <div className={styles.summaryCards}>
         <div className={styles.card}>

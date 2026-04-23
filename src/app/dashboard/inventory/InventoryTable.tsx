@@ -112,6 +112,23 @@ export default function InventoryTable({ initialProducts, userRole }: { initialP
     })
   }
 
+  const handleExportData = () => {
+    if (products.length === 0) {
+      return alert('No products to export.')
+    }
+    
+    // Convert current products to CSV
+    const csvContent = Papa.unparse(products)
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', 'inventory_export.csv')
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
   return (
     <div>
       {userRole === 'admin' && (
@@ -138,6 +155,9 @@ export default function InventoryTable({ initialProducts, userRole }: { initialP
               {isUploading ? 'Uploading...' : 'Bulk Upload CSV'}
             </button>
           </div>
+          <button onClick={handleExportData} className={styles.secondaryBtn} style={{ marginLeft: 'auto' }}>
+            Export Inventory CSV
+          </button>
         </div>
       )}
 
