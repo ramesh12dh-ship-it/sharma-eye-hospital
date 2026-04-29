@@ -38,6 +38,12 @@ export default function PosForm({ availableProducts, patients, userId }: { avail
 
   const selectedPatient = patients.find(p => p.patient_id === selectedPatientId) ?? null
 
+  // Today's patients — shown as quick-pick chips
+  const todaysPatients = useMemo(() => {
+    const today = new Date().toDateString()
+    return patients.filter(p => new Date(p.created_at).toDateString() === today)
+  }, [patients])
+
   const filteredPatients = useMemo(() => {
     if (!patientSearch) return []
     const q = patientSearch.toLowerCase()
@@ -197,7 +203,7 @@ export default function PosForm({ availableProducts, patients, userId }: { avail
           <form onSubmit={handleSubmit} className={styles.form}>
             {/* Patient Selector */}
             <div style={{ marginBottom: '1rem' }}>
-              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#4b5563', display: 'block', marginBottom: '0.25rem' }}>Patient (optional)</label>
+              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#4b5563', display: 'block', marginBottom: '0.5rem' }}>Patient (optional)</label>
               {selectedPatient ? (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.625rem 0.75rem', backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '0.375rem' }}>
                   <div>
@@ -207,36 +213,57 @@ export default function PosForm({ availableProducts, patients, userId }: { avail
                   <button type="button" onClick={() => { setSelectedPatientId(null); setPatientSearch('') }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontWeight: 'bold' }}>&times;</button>
                 </div>
               ) : (
-                <div style={{ position: 'relative' }}>
-                  <input
-                    type="text"
-                    value={patientSearch}
-                    onChange={e => setPatientSearch(e.target.value)}
-                    placeholder="Search by name or phone..."
-                    className={styles.input}
-                    style={{ width: '100%' }}
-                  />
-                  {filteredPatients.length > 0 && (
-                    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, backgroundColor: 'white', border: '1px solid #d1d5db', borderRadius: '0.375rem', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 10 }}>
-                      {filteredPatients.map(p => (
-                        <div
-                          key={p.patient_id}
-                          onClick={() => { setSelectedPatientId(p.patient_id); setPatientSearch('') }}
-                          style={{ padding: '0.625rem 0.75rem', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between' }}
-                          onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f9fafb')}
-                          onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'white')}
-                        >
-                          <span style={{ fontWeight: 500 }}>{p.name}</span>
-                          <span style={{ color: '#6b7280', fontSize: '0.875rem' }}>{p.phone}</span>
-                        </div>
-                      ))}
+                <div>
+                  {/* Today's patients as quick-pick chips */}
+                  {todaysPatients.length > 0 && (
+                    <div style={{ marginBottom: '0.5rem' }}>
+                      <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginBottom: '0.375rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Today's Patients</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem' }}>
+                        {todaysPatients.map(p => (
+                          <button
+                            key={p.patient_id}
+                            type="button"
+                            onClick={() => setSelectedPatientId(p.patient_id)}
+                            style={{ padding: '0.25rem 0.625rem', borderRadius: '9999px', border: '1px solid #bfdbfe', backgroundColor: '#eff6ff', color: '#1d4ed8', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                          >
+                            {p.name}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   )}
-                  {patientSearch && filteredPatients.length === 0 && (
-                    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, backgroundColor: 'white', border: '1px solid #d1d5db', borderRadius: '0.375rem', padding: '0.625rem 0.75rem', color: '#6b7280', fontSize: '0.875rem' }}>
-                      No patient found — <a href="/dashboard/patients" target="_blank" style={{ color: '#2563eb' }}>Add them here</a>
-                    </div>
-                  )}
+                  {/* Search for older patients */}
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      type="text"
+                      value={patientSearch}
+                      onChange={e => setPatientSearch(e.target.value)}
+                      placeholder={todaysPatients.length > 0 ? 'Or search older patients...' : 'Search by name or phone...'}
+                      className={styles.input}
+                      style={{ width: '100%' }}
+                    />
+                    {filteredPatients.length > 0 && (
+                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, backgroundColor: 'white', border: '1px solid #d1d5db', borderRadius: '0.375rem', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 10 }}>
+                        {filteredPatients.map(p => (
+                          <div
+                            key={p.patient_id}
+                            onClick={() => { setSelectedPatientId(p.patient_id); setPatientSearch('') }}
+                            style={{ padding: '0.625rem 0.75rem', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between' }}
+                            onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f9fafb')}
+                            onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'white')}
+                          >
+                            <span style={{ fontWeight: 500 }}>{p.name}</span>
+                            <span style={{ color: '#6b7280', fontSize: '0.875rem' }}>{p.phone}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {patientSearch && filteredPatients.length === 0 && (
+                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, backgroundColor: 'white', border: '1px solid #d1d5db', borderRadius: '0.375rem', padding: '0.625rem 0.75rem', color: '#6b7280', fontSize: '0.875rem' }}>
+                        No patient found — <a href="/dashboard/patients" target="_blank" style={{ color: '#2563eb' }}>Add them here</a>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
