@@ -36,13 +36,13 @@ export default async function DashboardLayout({
           {hasRole(userRoles, 'store_manager') && (
             <Link href="/dashboard/inventory" className={styles.navLink}>Inventory</Link>
           )}
-          {(hasRole(userRoles, 'store_manager') || hasRole(userRoles, 'receptionist')) && (
+          {(hasRole(userRoles, 'receptionist') || hasRole(userRoles, 'store_manager')) && (
             <Link href="/dashboard/pos" className={styles.navLink}>Opticals</Link>
           )}
-          {(hasRole(userRoles, 'receptionist') || hasRole(userRoles, 'store_manager')) && (
+          {(hasRole(userRoles, 'receptionist') || hasRole(userRoles, 'store_manager') || hasRole(userRoles, 'doctor') || hasRole(userRoles, 'optician')) && (
             <Link href="/dashboard/patients" className={styles.navLink}>Patients</Link>
           )}
-          {(hasRole(userRoles, 'store_manager') || hasRole(userRoles, 'receptionist') || hasRole(userRoles, 'optician')) && (
+          {(hasRole(userRoles, 'optician') || hasRole(userRoles, 'receptionist') || hasRole(userRoles, 'store_manager')) && (
             <Link href="/dashboard/orders" className={styles.navLink}>Orders</Link>
           )}
           {hasRole(userRoles, 'accountant') && (
