@@ -22,7 +22,8 @@ type SaleRow = {
   } | null
 }
 
-export default async function InvoicePage({ params }: { params: { transaction_id: string } }) {
+export default async function InvoicePage({ params }: { params: Promise<{ transaction_id: string }> }) {
+  const { transaction_id } = await params
   const supabase = await createClient()
 
   const { data: { user } } = await supabase.auth.getUser()
@@ -32,7 +33,7 @@ export default async function InvoicePage({ params }: { params: { transaction_id
   const { data: sales, error } = await supabase
     .from('sales')
     .select('sale_id, sale_date, product_code, sale_amount, tax_rate, payment_mode, order_status, patient_id')
-    .eq('transaction_id', params.transaction_id)
+    .eq('transaction_id', transaction_id)
     .order('sale_date', { ascending: true })
 
   if (error) {
@@ -83,7 +84,7 @@ export default async function InvoicePage({ params }: { params: { transaction_id
   const totalTax = sales.reduce((sum, s) => sum + (Number(s.sale_amount) * (Number(s.tax_rate) / 100)), 0)
   const grandTotal = subtotal + totalTax
 
-  const invoiceNumber = params.transaction_id.split('-')[0].toUpperCase()
+  const invoiceNumber = transaction_id.split('-')[0].toUpperCase()
 
   return (
     <>
