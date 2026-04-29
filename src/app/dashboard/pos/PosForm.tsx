@@ -110,6 +110,9 @@ export default function PosForm({ availableProducts, patients, userId }: { avail
     setIsSubmitting(true)
     setMessage(null)
 
+    // Generate one shared transaction_id for all items in this checkout
+    const transactionId = crypto.randomUUID()
+
     const inserts = cart.map(item => ({
       product_code: item.product.product_code,
       payment_mode: paymentMode,
@@ -117,6 +120,7 @@ export default function PosForm({ availableProducts, patients, userId }: { avail
       tax_rate: item.taxRate,
       recorded_by: userId,
       patient_id: selectedPatientId ?? null,
+      transaction_id: transactionId,
     }))
 
     const { error } = await supabase.from('sales').insert(inserts)
@@ -128,13 +132,15 @@ export default function PosForm({ availableProducts, patients, userId }: { avail
         setMessage({ type: 'error', text: 'Could not record sale. Please try again.' })
       }
     } else {
-      setMessage({ type: 'success', text: `Sale recorded for ${cart.length} item(s)! Inventory updated.` })
+      setMessage({ type: 'success', text: `Sale recorded for ${cart.length} item(s)! Opening invoice...` })
       setCart([])
       setSearchQuery('')
       setSelectedPatientId(null)
       setPatientSearch('')
       setPaymentMode('Cash')
       router.refresh()
+      // Open invoice in new tab and trigger print
+      window.open(`/dashboard/invoice/${transactionId}`, '_blank')
     }
     
     setIsSubmitting(false)
