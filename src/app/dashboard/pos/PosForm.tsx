@@ -132,15 +132,13 @@ export default function PosForm({ availableProducts, patients, userId }: { avail
         setMessage({ type: 'error', text: 'Could not record sale. Please try again.' })
       }
     } else {
-      setMessage({ type: 'success', text: `Sale recorded for ${cart.length} item(s)! Opening invoice...` })
+      setMessage({ type: 'success', text: `✓ Sale recorded for ${cart.length} item(s). See below to print the invoice.` })
       setCart([])
       setSearchQuery('')
       setSelectedPatientId(null)
       setPatientSearch('')
       setPaymentMode('Cash')
       router.refresh()
-      // Open invoice in new tab and trigger print
-      window.open(`/dashboard/invoice/${transactionId}`, '_blank')
     }
     
     setIsSubmitting(false)

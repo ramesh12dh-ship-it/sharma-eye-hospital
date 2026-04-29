@@ -38,9 +38,10 @@ export default async function PosPage() {
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
   const { data: recentSales } = await supabase
     .from('sales')
-    .select('sale_id, product_code, sale_date, payment_mode, sale_amount')
+    .select('sale_id, product_code, sale_date, payment_mode, sale_amount, tax_rate, transaction_id')
     .gte('sale_date', sevenDaysAgo.toISOString())
     .order('sale_date', { ascending: false })
+    .limit(20)
 
   // Fetch patients for the patient selector
   const { data: patients } = await supabase
@@ -50,14 +51,14 @@ export default async function PosPage() {
 
   return (
     <div>
-      <h1 style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '1.5rem' }}>Point of Sale</h1>
+      <h1 style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '1.5rem' }}>Opticals</h1>
       <PosForm 
         availableProducts={products || []} 
         patients={patients || []}
         userId={user.id} 
       />
 
-      <PosRecentSalesTable sales={recentSales || []} />
+      <PosRecentSalesTable sales={recentSales || []} canEdit={hasRole(userRoles, 'store_manager')} />
     </div>
   )
 }
