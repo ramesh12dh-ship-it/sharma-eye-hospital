@@ -124,6 +124,27 @@ export default function PatientFile({ patient, prescriptions: initialPrescriptio
     setIsSaving(false)
   }
 
+  const handleDeleteRx = async (rxId: string, docPath: string | null) => {
+    if (!confirm('Are you sure you want to delete this prescription? This action cannot be undone.')) return
+    
+    setIsSaving(true)
+    // 1. Delete from storage if exists
+    if (docPath) {
+      await supabase.storage.from('prescriptions').remove([docPath])
+    }
+
+    // 2. Delete from DB
+    const { error } = await supabase.from('prescriptions').delete().eq('prescription_id', rxId)
+
+    if (error) {
+      setFeedback({ type: 'error', text: 'Could not delete prescription.' })
+    } else {
+      setPrescriptions(prescriptions.filter(p => p.prescription_id !== rxId))
+      setFeedback({ type: 'success', text: 'Prescription deleted.' })
+    }
+    setIsSaving(false)
+  }
+
   // --- Styles ---
   const card: React.CSSProperties = { backgroundColor: 'white', borderRadius: '0.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: '1.5rem', marginBottom: '1.5rem' }
   const label: React.CSSProperties = { fontSize: '0.7rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '2px' }
@@ -269,6 +290,12 @@ export default function PatientFile({ patient, prescriptions: initialPrescriptio
                         <button onClick={() => openDocumentUrl(rx.document_path!)}
                           style={{ fontSize: '0.75rem', color: '#2563eb', background: 'none', border: '1px solid #bfdbfe', padding: '0.15rem 0.5rem', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 500 }}>
                           📄 View Slip
+                        </button>
+                      )}
+                      {canWrite && (
+                        <button onClick={() => handleDeleteRx(rx.prescription_id, rx.document_path)}
+                          style={{ fontSize: '0.75rem', color: '#dc2626', background: 'none', border: '1px solid #fecaca', padding: '0.15rem 0.5rem', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 500 }}>
+                          🗑 Delete
                         </button>
                       )}
                     </div>

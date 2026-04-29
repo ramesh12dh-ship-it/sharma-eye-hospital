@@ -12,6 +12,7 @@ type RecentSale = {
   sale_amount: number
   tax_rate: number
   transaction_id: string | null
+  is_voided: boolean
 }
 
 type CartGroup = {
@@ -21,13 +22,14 @@ type CartGroup = {
   items: RecentSale[]
   subtotal: number
   totalWithTax: number
+  is_voided: boolean
 }
 
 function groupByTransaction(sales: RecentSale[]): CartGroup[] {
   const map = new Map<string, CartGroup>()
 
   for (const sale of sales) {
-    const key = sale.transaction_id ?? sale.sale_id // fallback: old sales without transaction_id are solo rows
+    const key = sale.transaction_id ?? sale.sale_id
     if (!map.has(key)) {
       map.set(key, {
         transaction_id: sale.transaction_id,
@@ -36,13 +38,17 @@ function groupByTransaction(sales: RecentSale[]): CartGroup[] {
         items: [],
         subtotal: 0,
         totalWithTax: 0,
+        is_voided: false,
       })
     }
     const group = map.get(key)!
     group.items.push(sale)
-    const amt = Number(sale.sale_amount)
-    group.subtotal += amt
-    group.totalWithTax += amt + amt * (Number(sale.tax_rate) / 100)
+    if (!sale.is_voided) {
+      const amt = Number(sale.sale_amount)
+      group.subtotal += amt
+      group.totalWithTax += amt + amt * (Number(sale.tax_rate) / 100)
+    }
+    group.is_voided = group.items.every(i => i.is_voided)
   }
 
   return Array.from(map.values())
@@ -54,10 +60,7 @@ export default function PosRecentSalesTable({ sales: initialSales, canEdit }: { 
   const [searchQuery, setSearchQuery] = useState('')
   const [paymentModeFilter, setPaymentModeFilter] = useState('')
 
-  // Expanded rows (show item breakdown)
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set())
-
-  // Inline edit state (per sale_id)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editAmount, setEditAmount] = useState<string>('')
   const [isSaving, setIsSaving] = useState(false)
@@ -82,6 +85,7 @@ export default function PosRecentSalesTable({ sales: initialSales, canEdit }: { 
   }
 
   const startEdit = (sale: RecentSale) => {
+    if (sale.is_voided) return
     setEditingId(sale.sale_id)
     setEditAmount(String(sale.sale_amount))
     setFeedback(null)
@@ -99,6 +103,27 @@ export default function PosRecentSalesTable({ sales: initialSales, canEdit }: { 
     } else {
       setSales(sales.map(s => s.sale_id === saleId ? { ...s, sale_amount: newAmount } : s))
       setEditingId(null)
+      setFeedback(null)
+    }
+    setIsSaving(false)
+  }
+
+  const handleVoid = async (saleId: string) => {
+    if (!confirm('Are you sure you want to void this sale? This will replenish stock and mark the sale as voided.')) return
+    
+    setIsSaving(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    const { error } = await supabase.rpc('void_sale', { 
+      target_sale_id: saleId, 
+      admin_user_id: user.id 
+    })
+
+    if (error) {
+      setFeedback(error.message)
+    } else {
+      setSales(sales.map(s => s.sale_id === saleId ? { ...s, is_voided: true } : s))
       setFeedback(null)
     }
     setIsSaving(false)
@@ -165,7 +190,7 @@ export default function PosRecentSalesTable({ sales: initialSales, canEdit }: { 
               <th style={thStyle}>Total (incl. tax)</th>
               <th style={thStyle}>Payment</th>
               <th style={thStyle}>Invoice</th>
-              {canEdit && <th style={thStyle}>Edit</th>}
+              {canEdit && <th style={thStyle}>Actions</th>}
             </tr>
           </thead>
           <tbody>
@@ -178,15 +203,19 @@ export default function PosRecentSalesTable({ sales: initialSales, canEdit }: { 
 
               return (
                 <React.Fragment key={key}>
-                  {/* Cart summary row */}
-                  <tr style={{ cursor: group.items.length > 1 ? 'pointer' : undefined }}
+                  <tr 
+                    style={{ 
+                      cursor: group.items.length > 1 ? 'pointer' : undefined,
+                      opacity: group.is_voided ? 0.5 : 1,
+                      textDecoration: group.is_voided ? 'line-through' : 'none'
+                    }}
                     onClick={() => group.items.length > 1 && toggleExpand(key)}>
                     <td style={{ ...tdStyle, width: '32px', color: '#9ca3af', fontSize: '0.75rem', paddingRight: 0 }}>
                       {group.items.length > 1 ? (isExpanded ? '▾' : '▸') : ''}
                     </td>
                     <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>{formatDateTime(group.sale_date)}</td>
                     <td style={{ ...tdStyle, color: group.items.length > 1 ? '#1d4ed8' : '#111827', fontWeight: 500 }}>
-                      {itemLabel}
+                      {itemLabel} {group.is_voided && <span style={{ color: '#dc2626', fontSize: '0.7rem' }}>[VOIDED]</span>}
                     </td>
                     <td style={tdStyle}>
                       <strong>₹{group.totalWithTax.toFixed(2)}</strong>
@@ -206,7 +235,7 @@ export default function PosRecentSalesTable({ sales: initialSales, canEdit }: { 
                       </span>
                     </td>
                     <td style={tdStyle}>
-                      {group.transaction_id ? (
+                      {group.transaction_id && !group.is_voided ? (
                         <a
                           href={`/dashboard/invoice/${group.transaction_id}`}
                           target="_blank"
@@ -223,16 +252,17 @@ export default function PosRecentSalesTable({ sales: initialSales, canEdit }: { 
                     {canEdit && <td style={tdStyle}></td>}
                   </tr>
 
-                  {/* Expanded item rows */}
                   {isExpanded && group.items.map(item => {
                     const isEditing = editingId === item.sale_id
                     const taxAmt = Number(item.sale_amount) * (Number(item.tax_rate) / 100)
                     return (
-                      <tr key={item.sale_id} style={{ backgroundColor: '#f9fafb' }}>
+                      <tr key={item.sale_id} style={{ backgroundColor: '#f9fafb', opacity: item.is_voided ? 0.6 : 1 }}>
                         <td style={subTdStyle}></td>
                         <td style={subTdStyle}></td>
-                        <td style={subTdStyle}>{item.product_code}</td>
-                        <td style={subTdStyle}>
+                        <td style={{ ...subTdStyle, textDecoration: item.is_voided ? 'line-through' : 'none' }}>
+                          {item.product_code} {item.is_voided && <span style={{ color: '#dc2626', fontSize: '0.7rem' }}>[VOIDED]</span>}
+                        </td>
+                        <td style={{ ...subTdStyle, textDecoration: item.is_voided ? 'line-through' : 'none' }}>
                           {isEditing ? (
                             <div style={{ display: 'flex', gap: '0.375rem', alignItems: 'center' }}>
                               <input
@@ -260,11 +290,17 @@ export default function PosRecentSalesTable({ sales: initialSales, canEdit }: { 
                         <td style={subTdStyle}></td>
                         {canEdit && (
                           <td style={subTdStyle}>
-                            {!isEditing && (
-                              <button onClick={e => { e.stopPropagation(); startEdit(item) }}
-                                style={{ background: 'transparent', color: '#2563eb', border: '1px solid #bfdbfe', padding: '0.15rem 0.4rem', borderRadius: '0.2rem', cursor: 'pointer', fontSize: '0.7rem' }}>
-                                Edit
-                              </button>
+                            {!isEditing && !item.is_voided && (
+                              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                <button onClick={e => { e.stopPropagation(); startEdit(item) }}
+                                  style={{ background: 'transparent', color: '#2563eb', border: '1px solid #bfdbfe', padding: '0.15rem 0.4rem', borderRadius: '0.25rem', cursor: 'pointer', fontSize: '0.7rem' }}>
+                                  Edit
+                                </button>
+                                <button onClick={e => { e.stopPropagation(); handleVoid(item.sale_id) }}
+                                  style={{ background: 'transparent', color: '#dc2626', border: '1px solid #fecaca', padding: '0.15rem 0.4rem', borderRadius: '0.2rem', cursor: 'pointer', fontSize: '0.7rem' }}>
+                                  Void
+                                </button>
+                              </div>
                             )}
                           </td>
                         )}
