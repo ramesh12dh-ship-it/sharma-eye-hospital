@@ -48,6 +48,9 @@ export default async function DashboardLayout({
           {hasRole(userRoles, 'accountant') && (
             <Link href="/dashboard/reports" className={styles.navLink}>Reports</Link>
           )}
+          {hasRole(userRoles, 'admin') && (
+            <Link href="/dashboard/admin" className={styles.navLink}>Admin</Link>
+          )}
           <form action="/auth/signout" method="post" style={{ display: 'inline' }}>
             <button type="submit" className={styles.signOutBtn}>Sign Out</button>
           </form>
