@@ -47,11 +47,18 @@ export default async function PosPage() {
     .gte('sale_date', sevenDaysAgo.toISOString())
     .order('sale_date', { ascending: false })
 
+  // Fetch patients for the patient selector
+  const { data: patients } = await supabase
+    .from('patients')
+    .select('patient_id, name, phone')
+    .order('name', { ascending: true })
+
   return (
     <div>
       <h1 style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '1.5rem' }}>Point of Sale</h1>
       <PosForm 
         availableProducts={products || []} 
+        patients={patients || []}
         userId={user.id} 
       />
 

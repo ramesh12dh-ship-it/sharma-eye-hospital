@@ -13,19 +13,38 @@ type ProductLite = {
   brands: string | null
 }
 
+type PatientLite = {
+  patient_id: string
+  name: string
+  phone: string
+}
+
 type CartItem = {
   product: ProductLite
   saleAmount: number | ''
   taxRate: 5 | 12
 }
 
-export default function PosForm({ availableProducts, userId }: { availableProducts: ProductLite[], userId: string }) {
+export default function PosForm({ availableProducts, patients, userId }: { availableProducts: ProductLite[], patients: PatientLite[], userId: string }) {
   const router = useRouter()
   const [searchQuery, setSearchQuery] = useState('')
   const [cart, setCart] = useState<CartItem[]>([])
   const [paymentMode, setPaymentMode] = useState<'Cash' | 'UPI'>('Cash')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
+  // Patient state
+  const [patientSearch, setPatientSearch] = useState('')
+  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null)
+
+  const selectedPatient = patients.find(p => p.patient_id === selectedPatientId) ?? null
+
+  const filteredPatients = useMemo(() => {
+    if (!patientSearch) return []
+    const q = patientSearch.toLowerCase()
+    return patients.filter(p =>
+      p.name.toLowerCase().includes(q) || p.phone.includes(q)
+    ).slice(0, 6)
+  }, [patients, patientSearch])
 
   const supabase = createClient()
 
@@ -90,7 +109,8 @@ export default function PosForm({ availableProducts, userId }: { availableProduc
       payment_mode: paymentMode,
       sale_amount: Number(item.saleAmount),
       tax_rate: item.taxRate,
-      recorded_by: userId
+      recorded_by: userId,
+      patient_id: selectedPatientId ?? null,
     }))
 
     const { error } = await supabase.from('sales').insert(inserts)
@@ -105,6 +125,8 @@ export default function PosForm({ availableProducts, userId }: { availableProduc
       setMessage({ type: 'success', text: `Sale recorded for ${cart.length} item(s)! Inventory updated.` })
       setCart([])
       setSearchQuery('')
+      setSelectedPatientId(null)
+      setPatientSearch('')
       setPaymentMode('Cash')
       router.refresh()
     }
@@ -173,6 +195,51 @@ export default function PosForm({ availableProducts, userId }: { availableProduc
         
         {cart.length > 0 ? (
           <form onSubmit={handleSubmit} className={styles.form}>
+            {/* Patient Selector */}
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#4b5563', display: 'block', marginBottom: '0.25rem' }}>Patient (optional)</label>
+              {selectedPatient ? (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.625rem 0.75rem', backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '0.375rem' }}>
+                  <div>
+                    <span style={{ fontWeight: 600, color: '#1d4ed8' }}>{selectedPatient.name}</span>
+                    <span style={{ marginLeft: '0.5rem', color: '#4b5563', fontSize: '0.875rem' }}>{selectedPatient.phone}</span>
+                  </div>
+                  <button type="button" onClick={() => { setSelectedPatientId(null); setPatientSearch('') }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontWeight: 'bold' }}>&times;</button>
+                </div>
+              ) : (
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type="text"
+                    value={patientSearch}
+                    onChange={e => setPatientSearch(e.target.value)}
+                    placeholder="Search by name or phone..."
+                    className={styles.input}
+                    style={{ width: '100%' }}
+                  />
+                  {filteredPatients.length > 0 && (
+                    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, backgroundColor: 'white', border: '1px solid #d1d5db', borderRadius: '0.375rem', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 10 }}>
+                      {filteredPatients.map(p => (
+                        <div
+                          key={p.patient_id}
+                          onClick={() => { setSelectedPatientId(p.patient_id); setPatientSearch('') }}
+                          style={{ padding: '0.625rem 0.75rem', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between' }}
+                          onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f9fafb')}
+                          onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'white')}
+                        >
+                          <span style={{ fontWeight: 500 }}>{p.name}</span>
+                          <span style={{ color: '#6b7280', fontSize: '0.875rem' }}>{p.phone}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {patientSearch && filteredPatients.length === 0 && (
+                    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, backgroundColor: 'white', border: '1px solid #d1d5db', borderRadius: '0.375rem', padding: '0.625rem 0.75rem', color: '#6b7280', fontSize: '0.875rem' }}>
+                      No patient found — <a href="/dashboard/patients" target="_blank" style={{ color: '#2563eb' }}>Add them here</a>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
             <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '1rem', paddingRight: '0.5rem' }}>
               {cart.map((item, index) => (
                 <div key={item.product.product_code} className={styles.cartItem}>

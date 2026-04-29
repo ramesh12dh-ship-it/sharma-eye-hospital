@@ -39,6 +39,9 @@ export default async function DashboardLayout({
           {(userRole === 'admin' || userRole === 'store_manager') && (
             <Link href="/dashboard/pos" className={styles.navLink}>Point of Sale</Link>
           )}
+          {(userRole === 'admin' || userRole === 'receptionist' || userRole === 'store_manager') && (
+            <Link href="/dashboard/patients" className={styles.navLink}>Patients</Link>
+          )}
           {(userRole === 'admin' || userRole === 'accountant') && (
             <Link href="/dashboard/reports" className={styles.navLink}>Reports</Link>
           )}

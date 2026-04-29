@@ -120,6 +120,10 @@ BEGIN
         assigned_role := 'store_manager'::public.user_role;
     ELSIF LOWER(TRIM(NEW.email)) = 'accountant@example.com' THEN 
         assigned_role := 'accountant'::public.user_role;
+    ELSIF LOWER(TRIM(NEW.email)) IN ('receptionist1@example.com', 'receptionist2@example.com') THEN 
+        assigned_role := 'receptionist'::public.user_role;
+    ELSIF LOWER(TRIM(NEW.email)) IN ('optician1@example.com', 'optician2@example.com') THEN 
+        assigned_role := 'optician'::public.user_role;
     ELSE 
         RAISE EXCEPTION 'Email not authorized';
     END IF;
