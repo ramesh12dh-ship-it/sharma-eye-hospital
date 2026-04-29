@@ -9,7 +9,7 @@ export default function DeleteSaleButton({ saleId }: { saleId: string }) {
   const [isDeleting, setIsDeleting] = useState(false)
 
   const handleDelete = async () => {
-    if (!window.confirm('Are you sure you want to void this sale? The inventory stock will automatically be restored.')) {
+    if (!window.confirm('Are you sure you want to permanently DELETE this sale record? The inventory stock will automatically be restored.')) {
       return
     }
 
@@ -38,7 +38,7 @@ export default function DeleteSaleButton({ saleId }: { saleId: string }) {
         opacity: isDeleting ? 0.5 : 1
       }}
     >
-      {isDeleting ? 'Voiding...' : 'Void Sale'}
+      {isDeleting ? 'Deleting...' : 'Delete Sale'}
     </button>
   )
 }
