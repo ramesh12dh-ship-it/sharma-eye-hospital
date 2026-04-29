@@ -42,6 +42,13 @@ export default async function PatientFilePage({ params }: { params: Promise<{ pa
     .order('sale_date', { ascending: false })
     .limit(30)
 
+  // Fetch optical orders
+  const { data: orders } = await supabase
+    .from('optical_orders')
+    .select('*')
+    .eq('patient_id', patient_id)
+    .order('created_at', { ascending: false })
+
   const canWrite = hasRole(userRoles, 'optician')
 
   return (
@@ -49,6 +56,7 @@ export default async function PatientFilePage({ params }: { params: Promise<{ pa
       patient={patient}
       prescriptions={prescriptions ?? []}
       sales={sales ?? []}
+      orders={orders ?? []}
       canWrite={canWrite}
       userId={user.id}
     />

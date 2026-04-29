@@ -33,15 +33,24 @@ type Sale = {
   transaction_id: string | null
 }
 
+type OpticalOrder = {
+  order_id: string
+  status: 'ordered' | 'in_workshop' | 'ready' | 'delivered' | 'cancelled'
+  expected_date: string | null
+  notes: string | null
+  created_at: string
+}
+
 type Props = {
   patient: Patient
   prescriptions: Prescription[]
   sales: Sale[]
+  orders: OpticalOrder[]
   canWrite: boolean
   userId: string
 }
 
-// Format eye power into a compact string like "+1.25 / -0.50 × 90°"
+// Format eye power into a compact string
 function eyeStr(sph: number | null, cyl: number | null, axis: number | null, add: number | null) {
   if (sph == null && cyl == null) return null
   const s = sph != null ? (sph >= 0 ? `+${sph.toFixed(2)}` : sph.toFixed(2)) : '—'
@@ -53,7 +62,7 @@ function eyeStr(sph: number | null, cyl: number | null, axis: number | null, add
 
 const emptyRx = { r_sph: '', r_cyl: '', r_axis: '', r_add: '', l_sph: '', l_cyl: '', l_axis: '', l_add: '', pd: '', notes: '' }
 
-export default function PatientFile({ patient, prescriptions: initialPrescriptions, sales, canWrite, userId }: Props) {
+export default function PatientFile({ patient, prescriptions: initialPrescriptions, sales, orders, canWrite, userId }: Props) {
   const supabase = createClient()
   const [prescriptions, setPrescriptions] = useState<Prescription[]>(initialPrescriptions)
   const [isAddingRx, setIsAddingRx] = useState(false)
@@ -94,25 +103,21 @@ export default function PatientFile({ patient, prescriptions: initialPrescriptio
       .from('prescriptions').insert(payload).select().single()
 
     if (error || !newRx) {
-      setFeedback({ type: 'error', text: 'Could not save prescription. Please try again.' })
+      setFeedback({ type: 'error', text: 'Could not save prescription.' })
       setIsSaving(false)
       return
     }
 
-    // Upload file if selected
     let document_path: string | null = null
     if (rxFile) {
       const ext = rxFile.name.split('.').pop()
       const storagePath = `${patient.patient_id}/${newRx.prescription_id}.${ext}`
       const { error: uploadError } = await supabase.storage
-        .from('prescriptions')
-        .upload(storagePath, rxFile, { upsert: true })
+        .from('prescriptions').upload(storagePath, rxFile, { upsert: true })
 
       if (!uploadError) {
         document_path = storagePath
-        await supabase.from('prescriptions')
-          .update({ document_path })
-          .eq('prescription_id', newRx.prescription_id)
+        await supabase.from('prescriptions').update({ document_path }).eq('prescription_id', newRx.prescription_id)
       }
     }
 
@@ -125,19 +130,12 @@ export default function PatientFile({ patient, prescriptions: initialPrescriptio
   }
 
   const handleDeleteRx = async (rxId: string, docPath: string | null) => {
-    if (!confirm('Are you sure you want to delete this prescription? This action cannot be undone.')) return
-    
+    if (!confirm('Are you sure you want to delete this prescription?')) return
     setIsSaving(true)
-    // 1. Delete from storage if exists
-    if (docPath) {
-      await supabase.storage.from('prescriptions').remove([docPath])
-    }
-
-    // 2. Delete from DB
+    if (docPath) await supabase.storage.from('prescriptions').remove([docPath])
     const { error } = await supabase.from('prescriptions').delete().eq('prescription_id', rxId)
-
     if (error) {
-      setFeedback({ type: 'error', text: 'Could not delete prescription.' })
+      setFeedback({ type: 'error', text: 'Could not delete.' })
     } else {
       setPrescriptions(prescriptions.filter(p => p.prescription_id !== rxId))
       setFeedback({ type: 'success', text: 'Prescription deleted.' })
@@ -145,228 +143,137 @@ export default function PatientFile({ patient, prescriptions: initialPrescriptio
     setIsSaving(false)
   }
 
-  // --- Styles ---
+  const getStatusBadge = (status: string) => {
+    const styles: Record<string, any> = {
+      ordered: { bg: '#fef3c7', text: '#92400e' },
+      in_workshop: { bg: '#ffedd5', text: '#9a3412' },
+      ready: { bg: '#dcfce7', text: '#166534' },
+      delivered: { bg: '#dbeafe', text: '#1e40af' },
+      cancelled: { bg: '#fee2e2', text: '#991b1b' },
+    }
+    const s = styles[status] || { bg: '#f3f4f6', text: '#374151' }
+    return <span style={{ padding: '0.15rem 0.5rem', borderRadius: '9999px', fontSize: '0.7rem', fontWeight: 600, backgroundColor: s.bg, color: s.text, textTransform: 'uppercase' }}>{status.replace('_', ' ')}</span>
+  }
+
   const card: React.CSSProperties = { backgroundColor: 'white', borderRadius: '0.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: '1.5rem', marginBottom: '1.5rem' }
   const label: React.CSSProperties = { fontSize: '0.7rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '2px' }
   const inputStyle: React.CSSProperties = { width: '100%', padding: '0.4rem 0.6rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '0.9rem' }
   const eyeInputStyle: React.CSSProperties = { width: '100%', padding: '0.35rem 0.5rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '0.85rem', textAlign: 'center' }
 
+  const activeOrders = orders.filter(o => o.status !== 'delivered' && o.status !== 'cancelled')
+
   return (
     <div style={{ maxWidth: '860px', margin: '0 auto', padding: '1.5rem 1rem' }}>
-      {/* Back link */}
-      <a href="/dashboard/patients" style={{ color: '#6b7280', textDecoration: 'none', fontSize: '0.875rem', display: 'inline-flex', alignItems: 'center', gap: '4px', marginBottom: '1.25rem' }}>
-        ← Back to Patients
-      </a>
+      <a href="/dashboard/patients" style={{ color: '#6b7280', textDecoration: 'none', fontSize: '0.875rem', display: 'inline-flex', alignItems: 'center', gap: '4px', marginBottom: '1.25rem' }}>← Back to Patients</a>
 
-      {/* Patient info card */}
       <div style={{ ...card, background: 'linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%)', color: 'white' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
-            <h1 style={{ fontSize: '1.75rem', fontWeight: 'bold', margin: 0, letterSpacing: '-0.02em' }}>{patient.name}</h1>
+            <h1 style={{ fontSize: '1.75rem', fontWeight: 'bold', margin: 0 }}>{patient.name}</h1>
             <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.5rem', fontSize: '0.9rem', opacity: 0.9 }}>
               <span>📞 {patient.phone}</span>
               {patient.age && <span>🎂 {patient.age} yrs</span>}
               {patient.address && <span>📍 {patient.address}</span>}
             </div>
-            <div style={{ fontSize: '0.75rem', opacity: 0.7, marginTop: '0.375rem' }}>
-              Patient since {formatDate(patient.created_at)}
-            </div>
           </div>
           <div style={{ textAlign: 'right', fontSize: '0.8rem', opacity: 0.8 }}>
-            <div style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '2px' }}>{prescriptions.length} prescription{prescriptions.length !== 1 ? 's' : ''}</div>
-            <div>{sales.length} purchase{sales.length !== 1 ? 's' : ''}</div>
+            <div style={{ fontSize: '1rem', fontWeight: 600 }}>{prescriptions.length} Prescriptions</div>
+            <div>{sales.length} Purchases</div>
           </div>
         </div>
       </div>
 
-      {/* Feedback */}
-      {feedback && (
-        <div style={{ padding: '0.625rem 1rem', borderRadius: '0.375rem', marginBottom: '1rem', fontSize: '0.875rem', backgroundColor: feedback.type === 'success' ? '#dcfce7' : '#fee2e2', color: feedback.type === 'success' ? '#166534' : '#b91c1c' }}>
-          {feedback.text}
+      {feedback && <div style={{ padding: '0.625rem 1rem', borderRadius: '0.375rem', marginBottom: '1rem', fontSize: '0.875rem', backgroundColor: feedback.type === 'success' ? '#dcfce7' : '#fee2e2', color: feedback.type === 'success' ? '#166534' : '#b91c1c' }}>{feedback.text}</div>}
+
+      {/* ACTIVE ORDERS */}
+      {activeOrders.length > 0 && (
+        <div style={{ ...card, border: '2px solid #bfdbfe' }}>
+           <h2 style={{ fontSize: '1.125rem', fontWeight: 700, margin: '0 0 1rem', color: '#1e40af', display: 'flex', alignItems: 'center', gap: '8px' }}>
+             <span style={{ fontSize: '1.25rem' }}>🕶️</span> Active Optical Orders
+           </h2>
+           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+             {activeOrders.map(order => (
+               <div key={order.order_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem', backgroundColor: '#f0f7ff', borderRadius: '0.5rem' }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                       {getStatusBadge(order.status)}
+                       <span style={{ fontSize: '0.875rem', color: '#1e3a8a', fontWeight: 500 }}>
+                         Due: {order.expected_date ? formatDate(order.expected_date) : 'N/A'}
+                       </span>
+                    </div>
+                    {order.notes && <p style={{ margin: '0.375rem 0 0', fontSize: '0.8rem', color: '#4b5563' }}>{order.notes}</p>}
+                  </div>
+                  <a href="/dashboard/orders" style={{ fontSize: '0.75rem', color: '#2563eb', textDecoration: 'none', fontWeight: 600 }}>Track →</a>
+               </div>
+             ))}
+           </div>
         </div>
       )}
 
-      {/* ── Prescriptions ── */}
       <div style={card}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
           <h2 style={{ fontSize: '1.125rem', fontWeight: 700, margin: 0 }}>Prescriptions</h2>
-          {canWrite && !isAddingRx && (
-            <button onClick={() => setIsAddingRx(true)}
-              style={{ backgroundColor: '#1d4ed8', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '0.375rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>
-              + New Prescription
-            </button>
-          )}
+          {canWrite && !isAddingRx && <button onClick={() => setIsAddingRx(true)} style={{ backgroundColor: '#1d4ed8', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '0.375rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>+ New Prescription</button>}
         </div>
 
-        {/* New Prescription Form */}
         {isAddingRx && (
           <form onSubmit={handleSubmitRx} style={{ backgroundColor: '#f8fafc', borderRadius: '0.5rem', border: '1px solid #e2e8f0', padding: '1.25rem', marginBottom: '1.25rem' }}>
-            <div style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '1rem', color: '#1e3a8a' }}>New Prescription</div>
-
-            {/* Eye power table */}
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', marginBottom: '1rem' }}>
-                <thead>
-                  <tr style={{ backgroundColor: '#e2e8f0' }}>
-                    <th style={{ padding: '0.375rem 0.5rem', textAlign: 'left', fontWeight: 600, color: '#4b5563' }}>Eye</th>
-                    <th style={{ padding: '0.375rem 0.5rem', textAlign: 'center', fontWeight: 600, color: '#4b5563' }}>SPH</th>
-                    <th style={{ padding: '0.375rem 0.5rem', textAlign: 'center', fontWeight: 600, color: '#4b5563' }}>CYL</th>
-                    <th style={{ padding: '0.375rem 0.5rem', textAlign: 'center', fontWeight: 600, color: '#4b5563' }}>AXIS</th>
-                    <th style={{ padding: '0.375rem 0.5rem', textAlign: 'center', fontWeight: 600, color: '#4b5563' }}>ADD</th>
-                  </tr>
-                </thead>
+                <thead><tr style={{ backgroundColor: '#e2e8f0' }}><th>Eye</th><th>SPH</th><th>CYL</th><th>AXIS</th><th>ADD</th></tr></thead>
                 <tbody>
-                  <tr>
-                    <td style={{ padding: '0.375rem 0.5rem', fontWeight: 700, color: '#1d4ed8' }}>RE</td>
-                    <td style={{ padding: '0.25rem' }}><input type="number" step="0.25" placeholder="+0.00" value={rxForm.r_sph} onChange={e => setField('r_sph', e.target.value)} style={eyeInputStyle} /></td>
-                    <td style={{ padding: '0.25rem' }}><input type="number" step="0.25" placeholder="0.00" value={rxForm.r_cyl} onChange={e => setField('r_cyl', e.target.value)} style={eyeInputStyle} /></td>
-                    <td style={{ padding: '0.25rem' }}><input type="number" min="0" max="180" placeholder="0" value={rxForm.r_axis} onChange={e => setField('r_axis', e.target.value)} style={eyeInputStyle} /></td>
-                    <td style={{ padding: '0.25rem' }}><input type="number" step="0.25" placeholder="+0.00" value={rxForm.r_add} onChange={e => setField('r_add', e.target.value)} style={eyeInputStyle} /></td>
-                  </tr>
-                  <tr style={{ backgroundColor: '#f1f5f9' }}>
-                    <td style={{ padding: '0.375rem 0.5rem', fontWeight: 700, color: '#1d4ed8' }}>LE</td>
-                    <td style={{ padding: '0.25rem' }}><input type="number" step="0.25" placeholder="+0.00" value={rxForm.l_sph} onChange={e => setField('l_sph', e.target.value)} style={eyeInputStyle} /></td>
-                    <td style={{ padding: '0.25rem' }}><input type="number" step="0.25" placeholder="0.00" value={rxForm.l_cyl} onChange={e => setField('l_cyl', e.target.value)} style={eyeInputStyle} /></td>
-                    <td style={{ padding: '0.25rem' }}><input type="number" min="0" max="180" placeholder="0" value={rxForm.l_axis} onChange={e => setField('l_axis', e.target.value)} style={eyeInputStyle} /></td>
-                    <td style={{ padding: '0.25rem' }}><input type="number" step="0.25" placeholder="+0.00" value={rxForm.l_add} onChange={e => setField('l_add', e.target.value)} style={eyeInputStyle} /></td>
-                  </tr>
+                  <tr><td style={{ fontWeight: 700, color: '#1d4ed8' }}>RE</td><td><input type="number" step="0.25" placeholder="+0.00" value={rxForm.r_sph} onChange={e => setField('r_sph', e.target.value)} style={eyeInputStyle} /></td><td><input type="number" step="0.25" placeholder="0.00" value={rxForm.r_cyl} onChange={e => setField('r_cyl', e.target.value)} style={eyeInputStyle} /></td><td><input type="number" min="0" max="180" placeholder="0" value={rxForm.r_axis} onChange={e => setField('r_axis', e.target.value)} style={eyeInputStyle} /></td><td><input type="number" step="0.25" placeholder="+0.00" value={rxForm.r_add} onChange={e => setField('r_add', e.target.value)} style={eyeInputStyle} /></td></tr>
+                  <tr style={{ backgroundColor: '#f1f5f9' }}><td style={{ fontWeight: 700, color: '#1d4ed8' }}>LE</td><td><input type="number" step="0.25" placeholder="+0.00" value={rxForm.l_sph} onChange={e => setField('l_sph', e.target.value)} style={eyeInputStyle} /></td><td><input type="number" step="0.25" placeholder="0.00" value={rxForm.l_cyl} onChange={e => setField('l_cyl', e.target.value)} style={eyeInputStyle} /></td><td><input type="number" min="0" max="180" placeholder="0" value={rxForm.l_axis} onChange={e => setField('l_axis', e.target.value)} style={eyeInputStyle} /></td><td><input type="number" step="0.25" placeholder="+0.00" value={rxForm.l_add} onChange={e => setField('l_add', e.target.value)} style={eyeInputStyle} /></td></tr>
                 </tbody>
               </table>
             </div>
-
-            {/* PD + Notes + Upload */}
             <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
-              <div>
-                <div style={label}>PD (mm)</div>
-                <input type="number" step="0.5" placeholder="62.0" value={rxForm.pd} onChange={e => setField('pd', e.target.value)} style={inputStyle} />
-              </div>
-              <div>
-                <div style={label}>Notes (optional)</div>
-                <input type="text" placeholder="e.g. Bifocal, reading only, follow up in 6 months..." value={rxForm.notes} onChange={e => setField('notes', e.target.value)} style={inputStyle} />
-              </div>
+              <div><div style={label}>PD (mm)</div><input type="number" step="0.5" placeholder="62.0" value={rxForm.pd} onChange={e => setField('pd', e.target.value)} style={inputStyle} /></div>
+              <div><div style={label}>Notes</div><input type="text" placeholder="e.g. Bifocal..." value={rxForm.notes} onChange={e => setField('notes', e.target.value)} style={inputStyle} /></div>
             </div>
-
-            {/* File upload */}
             <div style={{ marginBottom: '1rem' }}>
-              <div style={label}>Upload Prescription Slip (photo / PDF — optional)</div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.625rem 0.875rem', border: '1.5px dashed #cbd5e1', borderRadius: '0.375rem', cursor: 'pointer', backgroundColor: rxFile ? '#f0fdf4' : 'white', color: rxFile ? '#166534' : '#6b7280', fontSize: '0.875rem' }}>
-                <span style={{ fontSize: '1.25rem' }}>{rxFile ? '✅' : '📎'}</span>
-                <span>{rxFile ? rxFile.name : 'Click to attach photo or PDF of prescription'}</span>
-                <input type="file" accept="image/*,.pdf" style={{ display: 'none' }}
-                  onChange={e => setRxFile(e.target.files?.[0] ?? null)} />
+              <div style={label}>Upload Prescription Slip</div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.625rem 0.875rem', border: '1.5px dashed #cbd5e1', borderRadius: '0.375rem', cursor: 'pointer', backgroundColor: rxFile ? '#f0fdf4' : 'white', fontSize: '0.875rem' }}>
+                <span>{rxFile ? '✅' : '📎'}</span><span>{rxFile ? rxFile.name : 'Click to attach photo or PDF'}</span>
+                <input type="file" accept="image/*,.pdf" style={{ display: 'none' }} onChange={e => setRxFile(e.target.files?.[0] ?? null)} />
               </label>
             </div>
-
-            <div style={{ display: 'flex', gap: '0.75rem' }}>
-              <button type="submit" disabled={isSaving}
-                style={{ backgroundColor: '#1d4ed8', color: 'white', border: 'none', padding: '0.5rem 1.5rem', borderRadius: '0.375rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>
-                {isSaving ? 'Saving…' : 'Save Prescription'}
-              </button>
-              <button type="button" onClick={() => { setIsAddingRx(false); setRxForm(emptyRx); setRxFile(null) }}
-                style={{ backgroundColor: 'white', color: '#6b7280', border: '1px solid #d1d5db', padding: '0.5rem 1rem', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.875rem' }}>
-                Cancel
-              </button>
-            </div>
+            <div style={{ display: 'flex', gap: '0.75rem' }}><button type="submit" disabled={isSaving} style={{ backgroundColor: '#1d4ed8', color: 'white', border: 'none', padding: '0.5rem 1.5rem', borderRadius: '0.375rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>{isSaving ? 'Saving…' : 'Save Prescription'}</button><button type="button" onClick={() => { setIsAddingRx(false); setRxForm(emptyRx); setRxFile(null) }} style={{ backgroundColor: 'white', color: '#6b7280', border: '1px solid #d1d5db', padding: '0.5rem 1rem', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.875rem' }}>Cancel</button></div>
           </form>
         )}
 
-        {/* Prescription list */}
-        {prescriptions.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '2rem', color: '#9ca3af', fontSize: '0.9rem' }}>
-            No prescriptions on file yet.{canWrite ? ' Click "+ New Prescription" to add one.' : ''}
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            {prescriptions.map(rx => {
-              const re = eyeStr(rx.r_sph, rx.r_cyl, rx.r_axis, rx.r_add)
-              const le = eyeStr(rx.l_sph, rx.l_cyl, rx.l_axis, rx.l_add)
-              const hasDigital = re || le
-              return (
-                <div key={rx.prescription_id} style={{ border: '1px solid #e5e7eb', borderRadius: '0.375rem', padding: '0.875rem 1rem', backgroundColor: 'white' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>{formatDate(rx.created_at)}</div>
-                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                      {rx.document_path && (
-                        <button onClick={() => openDocumentUrl(rx.document_path!)}
-                          style={{ fontSize: '0.75rem', color: '#2563eb', background: 'none', border: '1px solid #bfdbfe', padding: '0.15rem 0.5rem', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 500 }}>
-                          📄 View Slip
-                        </button>
-                      )}
-                      {canWrite && (
-                        <button onClick={() => handleDeleteRx(rx.prescription_id, rx.document_path)}
-                          style={{ fontSize: '0.75rem', color: '#dc2626', background: 'none', border: '1px solid #fecaca', padding: '0.15rem 0.5rem', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 500 }}>
-                          🗑 Delete
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {hasDigital && (
-                    <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                      {re && <div style={{ fontSize: '0.875rem' }}><span style={{ fontWeight: 700, color: '#1d4ed8', marginRight: '0.5rem', fontSize: '0.75rem' }}>RE</span>{re}</div>}
-                      {le && <div style={{ fontSize: '0.875rem' }}><span style={{ fontWeight: 700, color: '#1d4ed8', marginRight: '0.5rem', fontSize: '0.75rem' }}>LE</span>{le}</div>}
-                      {rx.pd && <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: '2px' }}>PD: {rx.pd} mm</div>}
-                    </div>
-                  )}
-
-                  {!hasDigital && rx.document_path && (
-                    <div style={{ marginTop: '0.375rem', fontSize: '0.875rem', color: '#6b7280', fontStyle: 'italic' }}>Uploaded slip only</div>
-                  )}
-
-                  {rx.notes && (
-                    <div style={{ marginTop: '0.375rem', fontSize: '0.8rem', color: '#4b5563', backgroundColor: '#f9fafb', padding: '0.25rem 0.5rem', borderRadius: '0.25rem' }}>
-                      💬 {rx.notes}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {prescriptions.map(rx => {
+            const re = eyeStr(rx.r_sph, rx.r_cyl, rx.r_axis, rx.r_add); const le = eyeStr(rx.l_sph, rx.l_cyl, rx.l_axis, rx.l_add)
+            return (
+              <div key={rx.prescription_id} style={{ border: '1px solid #e5e7eb', borderRadius: '0.375rem', padding: '0.875rem 1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}><div style={{ fontSize: '0.75rem', color: '#6b7280' }}>{formatDate(rx.created_at)}</div><div style={{ display: 'flex', gap: '0.5rem' }}>{rx.document_path && <button onClick={() => openDocumentUrl(rx.document_path!)} style={{ fontSize: '0.75rem', color: '#2563eb', background: 'none', border: '1px solid #bfdbfe', padding: '0.15rem 0.5rem', borderRadius: '0.25rem', cursor: 'pointer' }}>📄 Slip</button>}{canWrite && <button onClick={() => handleDeleteRx(rx.prescription_id, rx.document_path)} style={{ fontSize: '0.75rem', color: '#dc2626', background: 'none', border: '1px solid #fecaca', padding: '0.15rem 0.5rem', borderRadius: '0.25rem', cursor: 'pointer' }}>🗑</button></div></div>
+                {re && <div style={{ fontSize: '0.875rem', marginTop: '0.375rem' }}><span style={{ fontWeight: 700, color: '#1d4ed8', marginRight: '0.5rem' }}>RE</span>{re}</div>}
+                {le && <div style={{ fontSize: '0.875rem' }}><span style={{ fontWeight: 700, color: '#1d4ed8', marginRight: '0.5rem' }}>LE</span>{le}</div>}
+              </div>
+            )
+          })}
+        </div>
       </div>
 
-      {/* ── Purchase History ── */}
       <div style={card}>
         <h2 style={{ fontSize: '1.125rem', fontWeight: 700, margin: '0 0 1rem' }}>Purchase History</h2>
-        {sales.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '1.5rem', color: '#9ca3af', fontSize: '0.9rem' }}>No purchases recorded yet.</div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-              <thead>
-                <tr style={{ backgroundColor: '#f9fafb' }}>
-                  <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 600, color: '#4b5563', borderBottom: '1px solid #e5e7eb' }}>Date</th>
-                  <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 600, color: '#4b5563', borderBottom: '1px solid #e5e7eb' }}>Product</th>
-                  <th style={{ padding: '0.5rem 0.75rem', textAlign: 'right', fontWeight: 600, color: '#4b5563', borderBottom: '1px solid #e5e7eb' }}>Amount</th>
-                  <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 600, color: '#4b5563', borderBottom: '1px solid #e5e7eb' }}>Payment</th>
-                  <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 600, color: '#4b5563', borderBottom: '1px solid #e5e7eb' }}>Invoice</th>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+            <thead><tr style={{ backgroundColor: '#f9fafb' }}><th style={{ padding: '0.5rem', textAlign: 'left' }}>Date</th><th style={{ padding: '0.5rem', textAlign: 'left' }}>Product</th><th style={{ padding: '0.5rem', textAlign: 'right' }}>Amount</th><th style={{ padding: '0.5rem', textAlign: 'left' }}>Payment</th><th style={{ padding: '0.5rem', textAlign: 'left' }}>Invoice</th></tr></thead>
+            <tbody>
+              {sales.map((s, i) => (
+                <tr key={s.sale_id} style={{ backgroundColor: i % 2 === 0 ? 'white' : '#f9fafb' }}>
+                  <td style={{ padding: '0.5rem', color: '#6b7280' }}>{formatDate(s.sale_date)}</td>
+                  <td style={{ padding: '0.5rem', fontWeight: 500 }}>{s.product_code}</td>
+                  <td style={{ padding: '0.5rem', textAlign: 'right' }}>₹{Number(s.sale_amount).toFixed(2)}</td>
+                  <td style={{ padding: '0.5rem' }}>{s.payment_mode}</td>
+                  <td style={{ padding: '0.5rem' }}>{s.transaction_id ? <a href={`/dashboard/invoice/${s.transaction_id}`} target="_blank" style={{ color: '#2563eb', textDecoration: 'none' }}>🖨</a> : '—'}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {sales.map((s, i) => (
-                  <tr key={s.sale_id} style={{ backgroundColor: i % 2 === 0 ? 'white' : '#f9fafb' }}>
-                    <td style={{ padding: '0.5rem 0.75rem', borderBottom: '1px solid #f3f4f6', whiteSpace: 'nowrap', color: '#6b7280' }}>{formatDateTime(s.sale_date)}</td>
-                    <td style={{ padding: '0.5rem 0.75rem', borderBottom: '1px solid #f3f4f6', fontWeight: 500 }}>{s.product_code}</td>
-                    <td style={{ padding: '0.5rem 0.75rem', borderBottom: '1px solid #f3f4f6', textAlign: 'right' }}>₹{Number(s.sale_amount).toFixed(2)}</td>
-                    <td style={{ padding: '0.5rem 0.75rem', borderBottom: '1px solid #f3f4f6' }}>
-                      <span style={{ padding: '0.15rem 0.4rem', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 500, backgroundColor: s.payment_mode === 'UPI' ? '#dbeafe' : '#dcfce7', color: s.payment_mode === 'UPI' ? '#1e40af' : '#166534' }}>
-                        {s.payment_mode}
-                      </span>
-                    </td>
-                    <td style={{ padding: '0.5rem 0.75rem', borderBottom: '1px solid #f3f4f6' }}>
-                      {s.transaction_id ? (
-                        <a href={`/dashboard/invoice/${s.transaction_id}`} target="_blank" rel="noopener noreferrer"
-                          style={{ color: '#2563eb', textDecoration: 'none', fontSize: '0.8rem', fontWeight: 500 }}>
-                          🖨 Print
-                        </a>
-                      ) : '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   )

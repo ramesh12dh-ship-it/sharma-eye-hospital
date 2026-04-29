@@ -42,6 +42,9 @@ export default async function DashboardLayout({
           {(hasRole(userRoles, 'receptionist') || hasRole(userRoles, 'store_manager')) && (
             <Link href="/dashboard/patients" className={styles.navLink}>Patients</Link>
           )}
+          {(hasRole(userRoles, 'store_manager') || hasRole(userRoles, 'receptionist') || hasRole(userRoles, 'optician')) && (
+            <Link href="/dashboard/orders" className={styles.navLink}>Orders</Link>
+          )}
           {hasRole(userRoles, 'accountant') && (
             <Link href="/dashboard/reports" className={styles.navLink}>Reports</Link>
           )}

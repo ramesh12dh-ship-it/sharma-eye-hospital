@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import styles from './pos.module.css'
@@ -32,16 +32,24 @@ export default function PosForm({ availableProducts, patients, userId }: { avail
   const [paymentMode, setPaymentMode] = useState<'Cash' | 'UPI'>('Cash')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
+  
   // Patient state
   const [patientSearch, setPatientSearch] = useState('')
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null)
 
+  // Order state
+  const [shouldCreateOrder, setShouldCreateOrder] = useState(false)
+  const [expectedDate, setExpectedDate] = useState('')
+  const [labNotes, setLabNotes] = useState('')
+
   const selectedPatient = patients.find(p => p.patient_id === selectedPatientId) ?? null
 
-  // Today's patients — shown as quick-pick chips
   const todaysPatients = useMemo(() => {
     const today = new Date().toDateString()
-    return patients.filter(p => new Date(p.created_at).toDateString() === today)
+    return patients.filter(p => {
+      // @ts-ignore - created_at might be missing in Lite type but exists in DB
+      return p.created_at && new Date(p.created_at).toDateString() === today
+    })
   }, [patients])
 
   const filteredPatients = useMemo(() => {
@@ -54,7 +62,21 @@ export default function PosForm({ availableProducts, patients, userId }: { avail
 
   const supabase = createClient()
 
-  // Filter products based on search query
+  // Auto-detect if we should create an order based on cart contents
+  useEffect(() => {
+    const hasEyewear = cart.some(item => {
+      const type = (item.product.type || '').toLowerCase()
+      return type.includes('frame') || type.includes('lens')
+    })
+    if (hasEyewear && !shouldCreateOrder) {
+      setShouldCreateOrder(true)
+      // Set default expected date to 3 days from now
+      const d = new Date()
+      d.setDate(d.getDate() + 3)
+      setExpectedDate(d.toISOString().split('T')[0])
+    }
+  }, [cart])
+
   const filteredProducts = useMemo(() => {
     if (!searchQuery) return availableProducts.slice(0, 50)
     const q = searchQuery.toLowerCase()
@@ -66,15 +88,11 @@ export default function PosForm({ availableProducts, patients, userId }: { avail
   }, [availableProducts, searchQuery])
 
   const handleSelectProduct = (product: ProductLite) => {
-    // Prevent adding duplicates to the cart
-    if (cart.find(item => item.product.product_code === product.product_code)) {
-      return
-    }
-    
+    if (cart.find(item => item.product.product_code === product.product_code)) return
     setCart([...cart, {
       product,
       saleAmount: product.sale_price_s || '',
-      taxRate: 5 // Default tax rate
+      taxRate: 5 
     }])
   }
 
@@ -84,17 +102,13 @@ export default function PosForm({ availableProducts, patients, userId }: { avail
 
   const handleAmountChange = (product_code: string, newAmount: number | '') => {
     setCart(cart.map(item => 
-      item.product.product_code === product_code 
-        ? { ...item, saleAmount: newAmount } 
-        : item
+      item.product.product_code === product_code ? { ...item, saleAmount: newAmount } : item
     ))
   }
 
   const handleTaxRateChange = (product_code: string, newTaxRate: 5 | 12) => {
     setCart(cart.map(item => 
-      item.product.product_code === product_code 
-        ? { ...item, taxRate: newTaxRate } 
-        : item
+      item.product.product_code === product_code ? { ...item, taxRate: newTaxRate } : item
     ))
   }
 
@@ -106,14 +120,18 @@ export default function PosForm({ availableProducts, patients, userId }: { avail
     e.preventDefault()
     if (cart.length === 0) return
     if (cart.some(item => item.saleAmount === '')) return
+    if (shouldCreateOrder && !selectedPatientId) {
+      setMessage({ type: 'error', text: 'Please select a patient to create an optical order.' })
+      return
+    }
 
     setIsSubmitting(true)
     setMessage(null)
 
-    // Generate one shared transaction_id for all items in this checkout
     const transactionId = crypto.randomUUID()
 
-    const inserts = cart.map(item => ({
+    // 1. Record Sales
+    const salesInserts = cart.map(item => ({
       product_code: item.product.product_code,
       payment_mode: paymentMode,
       sale_amount: Number(item.saleAmount),
@@ -123,30 +141,47 @@ export default function PosForm({ availableProducts, patients, userId }: { avail
       transaction_id: transactionId,
     }))
 
-    const { error } = await supabase.from('sales').insert(inserts)
+    const { error: saleError } = await supabase.from('sales').insert(salesInserts)
 
-    if (error) {
-      if (error.message.includes('violates row-level security')) {
-        setMessage({ type: 'error', text: 'You do not have permission to record a sale.' })
+    if (saleError) {
+      setMessage({ type: 'error', text: saleError.message })
+      setIsSubmitting(false)
+      return
+    }
+
+    // 2. Record Order (if requested)
+    if (shouldCreateOrder && selectedPatientId) {
+      const { error: orderError } = await supabase.from('optical_orders').insert({
+        transaction_id: transactionId,
+        patient_id: selectedPatientId,
+        status: 'ordered',
+        notes: labNotes,
+        expected_date: expectedDate || null
+      })
+      if (orderError) {
+        console.error('Order creation error:', orderError)
+        // We don't block the whole sale if just the tracker fails, but we warn
+        setMessage({ type: 'success', text: 'Sale recorded, but optical order tracker failed to create.' })
       } else {
-        setMessage({ type: 'error', text: 'Could not record sale. Please try again.' })
+        setMessage({ type: 'success', text: `✓ Sale recorded & Optical Order created.` })
       }
     } else {
-      setMessage({ type: 'success', text: `✓ Sale recorded for ${cart.length} item(s). See below to print the invoice.` })
-      setCart([])
-      setSearchQuery('')
-      setSelectedPatientId(null)
-      setPatientSearch('')
-      setPaymentMode('Cash')
-      router.refresh()
+      setMessage({ type: 'success', text: `✓ Sale recorded.` })
     }
-    
+
+    setCart([])
+    setSearchQuery('')
+    setSelectedPatientId(null)
+    setPatientSearch('')
+    setPaymentMode('Cash')
+    setShouldCreateOrder(false)
+    setLabNotes('')
+    router.refresh()
     setIsSubmitting(false)
   }
 
   return (
     <div className={styles.splitContainer}>
-      {/* LEFT PANE: Search & Select */}
       <div className={styles.leftPane}>
         <div className={styles.searchHeader}>
           <input 
@@ -184,20 +219,12 @@ export default function PosForm({ availableProducts, patients, userId }: { avail
               </div>
             )
           })}
-          {filteredProducts.length === 0 && (
-            <div style={{ padding: '2rem', textAlign: 'center', color: '#6b7280' }}>
-              No products found matching "{searchQuery}"
-            </div>
-          )}
         </div>
       </div>
 
-      {/* RIGHT PANE: Checkout Cart */}
       <div className={styles.rightPane}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#111827', margin: 0 }}>
-            Shopping Cart
-          </h2>
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#111827', margin: 0 }}>Shopping Cart</h2>
           <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#2563eb', backgroundColor: '#dbeafe', padding: '0.25rem 0.5rem', borderRadius: '9999px' }}>
             {cart.length} item(s)
           </span>
@@ -207,7 +234,7 @@ export default function PosForm({ availableProducts, patients, userId }: { avail
           <form onSubmit={handleSubmit} className={styles.form}>
             {/* Patient Selector */}
             <div style={{ marginBottom: '1rem' }}>
-              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#4b5563', display: 'block', marginBottom: '0.5rem' }}>Patient (optional)</label>
+              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#4b5563', display: 'block', marginBottom: '0.5rem' }}>Patient</label>
               {selectedPatient ? (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.625rem 0.75rem', backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '0.375rem' }}>
                   <div>
@@ -217,153 +244,122 @@ export default function PosForm({ availableProducts, patients, userId }: { avail
                   <button type="button" onClick={() => { setSelectedPatientId(null); setPatientSearch('') }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontWeight: 'bold' }}>&times;</button>
                 </div>
               ) : (
-                <div>
-                  {/* Today's patients as quick-pick chips */}
-                  {todaysPatients.length > 0 && (
-                    <div style={{ marginBottom: '0.5rem' }}>
-                      <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginBottom: '0.375rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Today's Patients</div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem' }}>
-                        {todaysPatients.map(p => (
-                          <button
-                            key={p.patient_id}
-                            type="button"
-                            onClick={() => setSelectedPatientId(p.patient_id)}
-                            style={{ padding: '0.25rem 0.625rem', borderRadius: '9999px', border: '1px solid #bfdbfe', backgroundColor: '#eff6ff', color: '#1d4ed8', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                          >
-                            {p.name}
-                          </button>
-                        ))}
-                      </div>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type="text"
+                    value={patientSearch}
+                    onChange={e => setPatientSearch(e.target.value)}
+                    placeholder="Search by name or phone..."
+                    className={styles.input}
+                    style={{ width: '100%' }}
+                  />
+                  {filteredPatients.length > 0 && (
+                    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, backgroundColor: 'white', border: '1px solid #d1d5db', borderRadius: '0.375rem', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 10 }}>
+                      {filteredPatients.map(p => (
+                        <div
+                          key={p.patient_id}
+                          onClick={() => { setSelectedPatientId(p.patient_id); setPatientSearch('') }}
+                          style={{ padding: '0.625rem 0.75rem', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between' }}
+                        >
+                          <span style={{ fontWeight: 500 }}>{p.name}</span>
+                          <span style={{ color: '#6b7280', fontSize: '0.875rem' }}>{p.phone}</span>
+                        </div>
+                      ))}
                     </div>
                   )}
-                  {/* Search for older patients */}
-                  <div style={{ position: 'relative' }}>
-                    <input
-                      type="text"
-                      value={patientSearch}
-                      onChange={e => setPatientSearch(e.target.value)}
-                      placeholder={todaysPatients.length > 0 ? 'Or search older patients...' : 'Search by name or phone...'}
-                      className={styles.input}
-                      style={{ width: '100%' }}
-                    />
-                    {filteredPatients.length > 0 && (
-                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, backgroundColor: 'white', border: '1px solid #d1d5db', borderRadius: '0.375rem', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 10 }}>
-                        {filteredPatients.map(p => (
-                          <div
-                            key={p.patient_id}
-                            onClick={() => { setSelectedPatientId(p.patient_id); setPatientSearch('') }}
-                            style={{ padding: '0.625rem 0.75rem', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between' }}
-                            onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f9fafb')}
-                            onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'white')}
-                          >
-                            <span style={{ fontWeight: 500 }}>{p.name}</span>
-                            <span style={{ color: '#6b7280', fontSize: '0.875rem' }}>{p.phone}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {patientSearch && filteredPatients.length === 0 && (
-                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, backgroundColor: 'white', border: '1px solid #d1d5db', borderRadius: '0.375rem', padding: '0.625rem 0.75rem', color: '#6b7280', fontSize: '0.875rem' }}>
-                        No patient found — <a href="/dashboard/patients" target="_blank" style={{ color: '#2563eb' }}>Add them here</a>
-                      </div>
-                    )}
-                  </div>
                 </div>
               )}
             </div>
-            <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '1rem', paddingRight: '0.5rem' }}>
+
+            <div style={{ maxHeight: '200px', overflowY: 'auto', marginBottom: '1rem' }}>
               {cart.map((item, index) => (
                 <div key={item.product.product_code} className={styles.cartItem}>
                   <div className={styles.cartItemDetails}>
-                    <span style={{ fontWeight: 600, color: '#111827', fontSize: '0.875rem' }}>
-                      {index + 1}. {item.product.product_code}
-                    </span>
-                    <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
-                      {item.product.brands} • {item.product.type}
-                    </span>
+                    <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>{index + 1}. {item.product.product_code}</span>
+                    <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>{item.product.brands} • {item.product.type}</span>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ color: '#6b7280' }}>₹</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                     <input 
                       type="number" 
                       value={item.saleAmount} 
                       onChange={e => handleAmountChange(item.product.product_code, e.target.value ? Number(e.target.value) : '')}
                       className={styles.input}
-                      style={{ width: '80px', padding: '0.25rem 0.5rem', fontSize: '0.875rem' }}
-                      required
-                      min="0"
-                      step="0.01"
-                      title="Item Price"
+                      style={{ width: '70px', padding: '0.2rem' }}
                     />
-                    <select 
-                      value={item.taxRate} 
-                      onChange={e => handleTaxRateChange(item.product.product_code, Number(e.target.value) as 5 | 12)}
-                      className={styles.select}
-                      style={{ padding: '0.25rem 0.5rem', fontSize: '0.875rem' }}
-                      title="Item Tax Rate"
-                    >
-                      <option value={5}>5%</option>
-                      <option value={12}>12%</option>
-                    </select>
-                    <button 
-                      type="button" 
-                      className={styles.removeBtn}
-                      onClick={() => handleRemoveItem(item.product.product_code)}
-                      title="Remove Item"
-                    >
-                      &times;
-                    </button>
+                    <button type="button" onClick={() => handleRemoveItem(item.product.product_code)} className={styles.removeBtn}>&times;</button>
                   </div>
                 </div>
               ))}
             </div>
 
-            <div style={{ borderTop: '2px dashed #e5e7eb', paddingTop: '1rem', marginBottom: '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', color: '#4b5563' }}>
-                <span>Subtotal:</span>
-                <span>₹{grandTotal.toFixed(2)}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', color: '#4b5563' }}>
-                <span>Total Tax:</span>
-                <span>₹{taxAmount.toFixed(2)}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.25rem', fontWeight: 'bold', color: '#111827', marginTop: '0.5rem' }}>
-                <span>Grand Total:</span>
+            {/* ORDER TRACKER SECTION */}
+            <div style={{ padding: '1rem', backgroundColor: '#f9fafb', borderRadius: '0.5rem', border: '1px solid #e5e7eb', marginBottom: '1rem' }}>
+               <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem', color: '#374151' }}>
+                 <input 
+                   type="checkbox" 
+                   checked={shouldCreateOrder} 
+                   onChange={e => setShouldCreateOrder(e.target.checked)} 
+                   style={{ width: '1.1rem', height: '1.1rem' }}
+                 />
+                 Create Optical Order Tracker
+               </label>
+               
+               {shouldCreateOrder && (
+                 <div style={{ marginTop: '0.75rem', display: 'grid', gridTemplateColumns: '1fr', gap: '0.75rem' }}>
+                    <div>
+                      <label style={{ fontSize: '0.7rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem' }}>Expected Delivery Date</label>
+                      <input 
+                        type="date" 
+                        value={expectedDate} 
+                        onChange={e => setExpectedDate(e.target.value)} 
+                        className={styles.input} 
+                        style={{ width: '100%', fontSize: '0.875rem' }}
+                        required={shouldCreateOrder}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.7rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem' }}>Workshop Instructions</label>
+                      <textarea 
+                        value={labNotes} 
+                        onChange={e => setLabNotes(e.target.value)} 
+                        placeholder="e.g. AR Coating, Crizal Lens, fitting notes..."
+                        className={styles.input}
+                        style={{ width: '100%', minHeight: '60px', fontSize: '0.875rem' }}
+                      />
+                    </div>
+                 </div>
+               )}
+            </div>
+
+            <div style={{ borderTop: '2px dashed #e5e7eb', paddingTop: '0.75rem', marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.1rem', fontWeight: 'bold', color: '#111827' }}>
+                <span>Total:</span>
                 <span>₹{totalWithTax.toFixed(2)}</span>
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '1rem' }}>
-              <div className={styles.formGroup} style={{ flex: 1 }}>
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+              <div style={{ flex: 1 }}>
                 <label className={styles.label}>Payment Mode</label>
-                <select 
-                  value={paymentMode} 
-                  onChange={e => setPaymentMode(e.target.value as 'Cash' | 'UPI')}
-                  className={styles.select}
-                >
+                <select value={paymentMode} onChange={e => setPaymentMode(e.target.value as 'Cash' | 'UPI')} className={styles.select}>
                   <option value="Cash">Cash</option>
                   <option value="UPI">UPI</option>
                 </select>
               </div>
             </div>
 
-            <button 
-              type="submit" 
-              disabled={isSubmitting || cart.some(i => i.saleAmount === '')} 
-              className={styles.submitBtn}
-            >
-              {isSubmitting ? 'Processing...' : `Confirm Sale (₹${totalWithTax.toFixed(2)})`}
+            <button type="submit" disabled={isSubmitting} className={styles.submitBtn}>
+              {isSubmitting ? 'Processing...' : `Confirm Sale & Print Invoice`}
             </button>
           </form>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '300px', border: '2px dashed #d1d5db', borderRadius: '0.5rem', color: '#6b7280' }}>
-            <span style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🛒</span>
-            <p>Your cart is empty. Click products to add them.</p>
+            <p>Cart is empty.</p>
           </div>
         )}
 
         {message && (
-          <div className={message.type === 'success' ? styles.successMsg : styles.errorMsg}>
+          <div className={message.type === 'success' ? styles.successMsg : styles.errorMsg} style={{ marginTop: '1rem' }}>
             {message.text}
           </div>
         )}
