@@ -225,7 +225,7 @@ export default function PatientsTable({ initialPatients, userRole }: { initialPa
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr>
-              {['Name', 'Phone', 'Age', 'Address', 'Registered On', ...(canEdit(userRole) ? [''] : [])].map((h, i) => (
+              {['Name', 'Phone', 'Age', 'Address', 'Registered On', 'File', ...(canEdit(userRole) ? [''] : [])].map((h, i) => (
                 <th key={i} style={{ backgroundColor: '#f9fafb', fontWeight: 600, color: '#4b5563', padding: '0.75rem 1rem', textAlign: 'left', borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap', fontSize: '0.875rem' }}>{h}</th>
               ))}
             </tr>
@@ -253,6 +253,11 @@ export default function PatientsTable({ initialPatients, userRole }: { initialPa
                         {formatDate(p.created_at)}
                       </td>
                       <td style={{ padding: '0.5rem 0.75rem', whiteSpace: 'nowrap' }}>
+                        <a href={`/dashboard/patients/${p.patient_id}`}
+                          style={{ color: '#2563eb', textDecoration: 'none', fontSize: '0.8rem', fontWeight: 500 }}
+                        >View File →</a>
+                      </td>
+                      <td style={{ padding: '0.5rem 0.75rem', whiteSpace: 'nowrap' }}>
                         <button
                           onClick={() => handleSaveEdit(p.patient_id)}
                           disabled={isSubmitting}
@@ -277,6 +282,11 @@ export default function PatientsTable({ initialPatients, userRole }: { initialPa
                       <td style={{ padding: '0.75rem 1rem', color: '#6b7280', whiteSpace: 'nowrap', fontSize: '0.875rem' }}>
                         {formatDate(p.created_at)}
                       </td>
+                      <td style={{ padding: '0.75rem 1rem' }}>
+                        <a href={`/dashboard/patients/${p.patient_id}`}
+                          style={{ color: '#2563eb', textDecoration: 'none', fontSize: '0.8rem', fontWeight: 500 }}
+                        >View File →</a>
+                      </td>
                       {canEdit(userRole) && (
                         <td style={{ padding: '0.75rem 1rem' }}>
                           <button
@@ -294,7 +304,7 @@ export default function PatientsTable({ initialPatients, userRole }: { initialPa
             })}
             {filteredPatients.length === 0 && (
               <tr>
-                <td colSpan={canEdit(userRole) ? 6 : 5} style={{ textAlign: 'center', padding: '3rem', color: '#6b7280' }}>
+                <td colSpan={canEdit(userRole) ? 7 : 6} style={{ textAlign: 'center', padding: '3rem', color: '#6b7280' }}>
                   {searchQuery ? `No patients found matching "${searchQuery}"` : 'No patients registered yet.'}
                 </td>
               </tr>
