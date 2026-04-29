@@ -244,12 +244,34 @@ export default function PatientFile({ patient, prescriptions: initialPrescriptio
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           {prescriptions.map(rx => {
-            const re = eyeStr(rx.r_sph, rx.r_cyl, rx.r_axis, rx.r_add); const le = eyeStr(rx.l_sph, rx.l_cyl, rx.l_axis, rx.l_add)
+            const re = eyeStr(rx.r_sph, rx.r_cyl, rx.r_axis, rx.r_add)
+            const le = eyeStr(rx.l_sph, rx.l_cyl, rx.l_axis, rx.l_add)
+            
             return (
               <div key={rx.prescription_id} style={{ border: '1px solid #e5e7eb', borderRadius: '0.375rem', padding: '0.875rem 1rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}><div style={{ fontSize: '0.75rem', color: '#6b7280' }}>{formatDate(rx.created_at)}</div><div style={{ display: 'flex', gap: '0.5rem' }}>{rx.document_path && <button onClick={() => openDocumentUrl(rx.document_path!)} style={{ fontSize: '0.75rem', color: '#2563eb', background: 'none', border: '1px solid #bfdbfe', padding: '0.15rem 0.5rem', borderRadius: '0.25rem', cursor: 'pointer' }}>📄 Slip</button>}{canWrite && <button onClick={() => handleDeleteRx(rx.prescription_id, rx.document_path)} style={{ fontSize: '0.75rem', color: '#dc2626', background: 'none', border: '1px solid #fecaca', padding: '0.15rem 0.5rem', borderRadius: '0.25rem', cursor: 'pointer' }}>🗑</button></div></div>
-                {re && <div style={{ fontSize: '0.875rem', marginTop: '0.375rem' }}><span style={{ fontWeight: 700, color: '#1d4ed8', marginRight: '0.5rem' }}>RE</span>{re}</div>}
-                {le && <div style={{ fontSize: '0.875rem' }}><span style={{ fontWeight: 700, color: '#1d4ed8', marginRight: '0.5rem' }}>LE</span>{le}</div>}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>{formatDate(rx.created_at)}</div>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    {rx.document_path && (
+                      <button onClick={() => openDocumentUrl(rx.document_path!)} style={{ fontSize: '0.75rem', color: '#2563eb', background: 'none', border: '1px solid #bfdbfe', padding: '0.15rem 0.5rem', borderRadius: '0.25rem', cursor: 'pointer' }}>📄 Slip</button>
+                    )}
+                    {canWrite && (
+                      <button onClick={() => handleDeleteRx(rx.prescription_id, rx.document_path)} style={{ fontSize: '0.75rem', color: '#dc2626', background: 'none', border: '1px solid #fecaca', padding: '0.15rem 0.5rem', borderRadius: '0.25rem', cursor: 'pointer' }}>🗑</button>
+                    )}
+                  </div>
+                </div>
+                {re && (
+                  <div style={{ fontSize: '0.875rem', marginTop: '0.375rem' }}>
+                    <span style={{ fontWeight: 700, color: '#1d4ed8', marginRight: '0.5rem' }}>RE</span>
+                    {re}
+                  </div>
+                )}
+                {le && (
+                  <div style={{ fontSize: '0.875rem' }}>
+                    <span style={{ fontWeight: 700, color: '#1d4ed8', marginRight: '0.5rem' }}>LE</span>
+                    {le}
+                  </div>
+                )}
               </div>
             )
           })}
