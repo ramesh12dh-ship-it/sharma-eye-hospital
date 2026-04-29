@@ -272,6 +272,11 @@ export default function PatientFile({ patient, prescriptions: initialPrescriptio
                     {le}
                   </div>
                 )}
+                {rx.pd && (
+                  <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: '0.25rem', borderTop: '1px dashed #e5e7eb', paddingTop: '0.25rem' }}>
+                    <span style={{ fontWeight: 600 }}>PD:</span> {rx.pd} mm
+                  </div>
+                )}
               </div>
             )
           })}
