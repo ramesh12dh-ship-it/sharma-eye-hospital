@@ -1,6 +1,7 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import PosForm from './PosForm'
+import PosRecentSalesTable from './PosRecentSalesTable'
 
 export default async function PosPage() {
   const supabase = await createClient()
@@ -37,6 +38,15 @@ export default async function PosPage() {
     .select('product_code, stock, sale_price_s, type, brands')
     .gt('stock', 0) // Only show items in stock
 
+  // Fetch recent sales (last 7 days)
+  const sevenDaysAgo = new Date()
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+  const { data: recentSales } = await supabase
+    .from('sales')
+    .select('sale_id, product_code, sale_date, payment_mode, sale_amount')
+    .gte('sale_date', sevenDaysAgo.toISOString())
+    .order('sale_date', { ascending: false })
+
   return (
     <div>
       <h1 style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '1.5rem' }}>Point of Sale</h1>
@@ -44,6 +54,8 @@ export default async function PosPage() {
         availableProducts={products || []} 
         userId={user.id} 
       />
+
+      <PosRecentSalesTable sales={recentSales || []} />
     </div>
   )
 }

@@ -72,6 +72,10 @@ CREATE POLICY "Store managers and admins can insert sales" ON public.sales
     FOR INSERT TO authenticated
     WITH CHECK (public.get_user_role() IN ('store_manager', 'admin'));
 
+CREATE POLICY "Only admins can delete sales" ON public.sales
+    FOR DELETE TO authenticated
+    USING (public.get_user_role() = 'admin');
+
 CREATE OR REPLACE FUNCTION public.deduct_inventory_on_sale()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -87,6 +91,21 @@ CREATE TRIGGER on_sale_insert
     FOR EACH ROW
     EXECUTE FUNCTION public.deduct_inventory_on_sale();
 
+CREATE OR REPLACE FUNCTION public.restore_inventory_on_sale_delete()
+RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE public.products
+    SET stock = stock + 1
+    WHERE product_code = OLD.product_code;
+    RETURN OLD;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+CREATE TRIGGER on_sale_delete
+    AFTER DELETE ON public.sales
+    FOR EACH ROW
+    EXECUTE FUNCTION public.restore_inventory_on_sale_delete();
+
 CREATE OR REPLACE FUNCTION public.assign_user_role()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -95,11 +114,11 @@ AS $$
 DECLARE 
   assigned_role public.user_role;
 BEGIN
-    IF LOWER(TRIM(NEW.email)) = 'ramesh12dh@gmail.com' THEN 
+    IF LOWER(TRIM(NEW.email)) IN ('admin1@example.com', 'admin2@example.com') THEN 
         assigned_role := 'admin'::public.user_role;
-    ELSIF LOWER(TRIM(NEW.email)) IN ('khushman1426@gmail.com', 'ranjnadhuri55@gmail.com') THEN 
+    ELSIF LOWER(TRIM(NEW.email)) IN ('manager1@example.com', 'manager2@example.com') THEN 
         assigned_role := 'store_manager'::public.user_role;
-    ELSIF LOWER(TRIM(NEW.email)) = 'finance.rameshsharmahuf@gmail.com' THEN 
+    ELSIF LOWER(TRIM(NEW.email)) = 'accountant@example.com' THEN 
         assigned_role := 'accountant'::public.user_role;
     ELSE 
         RAISE EXCEPTION 'Email not authorized';

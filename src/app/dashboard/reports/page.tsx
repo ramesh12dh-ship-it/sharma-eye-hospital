@@ -1,6 +1,7 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import ExportButton from './ExportButton'
+import ReportsTable from './ReportsTable'
 import styles from './reports.module.css'
 
 export default async function ReportsPage() {
@@ -32,6 +33,10 @@ export default async function ReportsPage() {
     )
   }
 
+  // Fetch sales from the last 30 days to prevent the page from crashing with too much data
+  const thirtyDaysAgo = new Date()
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+
   // Fetch sales and join with products to get sale_price_a
   const { data: sales, error } = await supabase
     .from('sales')
@@ -46,6 +51,7 @@ export default async function ReportsPage() {
         sale_price_a
       )
     `)
+    .gte('sale_date', thirtyDaysAgo.toISOString())
     .order('sale_date', { ascending: false })
 
   if (error) {
@@ -72,57 +78,25 @@ export default async function ReportsPage() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <h1 className={styles.title} style={{ marginBottom: 0 }}>Financial Reports</h1>
-        <ExportButton data={exportData} filename="financial_reports_export.csv" className={styles.exportBtn} />
+        <ExportButton data={exportData} filename="financial_reports_30days.csv" className={styles.exportBtn} />
       </div>
 
       <div className={styles.summaryCards}>
         <div className={styles.card}>
-          <h3>Total Revenue (Accounts)</h3>
+          <h3>Total Revenue (Last 30 Days)</h3>
           <p className={styles.cardValue}>₹{totalSales.toFixed(2)}</p>
         </div>
         <div className={styles.card}>
-          <h3>Total Tax Collected</h3>
+          <h3>Tax Collected (Last 30 Days)</h3>
           <p className={styles.cardValue}>₹{totalTax.toFixed(2)}</p>
         </div>
         <div className={styles.card}>
-          <h3>Total Transactions</h3>
+          <h3>Transactions (Last 30 Days)</h3>
           <p className={styles.cardValue}>{sales?.length || 0}</p>
         </div>
       </div>
 
-      <div className={styles.tableContainer}>
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th>Date & Time</th>
-              <th>Product Code (SKU)</th>
-              <th>Amount (Accounts)</th>
-              <th>Tax Rate</th>
-              <th>Payment Mode</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sales?.map(sale => (
-              <tr key={sale.sale_id}>
-                <td>{new Date(sale.sale_date).toLocaleString()}</td>
-                <td>{sale.product_code}</td>
-                <td><strong>₹{getAccountPrice(sale)}</strong></td>
-                <td>{sale.tax_rate}%</td>
-                <td>
-                  <span className={`${styles.badge} ${sale.payment_mode === 'UPI' ? styles.badgeUpi : styles.badgeCash}`}>
-                    {sale.payment_mode}
-                  </span>
-                </td>
-              </tr>
-            ))}
-            {(!sales || sales.length === 0) && (
-              <tr>
-                <td colSpan={5} style={{ textAlign: 'center', padding: '2rem' }}>No sales recorded yet.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <ReportsTable sales={sales || []} role={role} />
     </div>
   )
 }
