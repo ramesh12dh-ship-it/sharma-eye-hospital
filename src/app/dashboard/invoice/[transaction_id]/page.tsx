@@ -28,28 +28,55 @@ export default async function InvoicePage({ params }: { params: { transaction_id
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/')
 
+  // Step 1: fetch raw sales rows (no joins — isolate FK issues)
   const { data: sales, error } = await supabase
     .from('sales')
-    .select(`
-      sale_id,
-      sale_date,
-      product_code,
-      sale_amount,
-      tax_rate,
-      payment_mode,
-      order_status,
-      patients (name, phone, address),
-      products (brands, type)
-    `)
+    .select('sale_id, sale_date, product_code, sale_amount, tax_rate, payment_mode, order_status, patient_id')
     .eq('transaction_id', params.transaction_id)
     .order('sale_date', { ascending: true })
 
-  if (error || !sales || sales.length === 0) {
-    notFound()
+  if (error) {
+    console.error('[Invoice] Sales query error:', error)
+    return (
+      <div style={{ padding: '2rem', fontFamily: 'monospace' }}>
+        <h2 style={{ color: 'red' }}>Invoice Query Error</h2>
+        <pre>{JSON.stringify(error, null, 2)}</pre>
+      </div>
+    )
   }
 
-  const firstSale = sales[0] as SaleRow
-  const patient = firstSale.patients
+  if (!sales || sales.length === 0) {
+    console.error('[Invoice] No sales found for transaction_id:', params.transaction_id)
+    return (
+      <div style={{ padding: '2rem', fontFamily: 'monospace' }}>
+        <h2 style={{ color: '#b45309' }}>No sales found</h2>
+        <p>Transaction ID: <code>{params.transaction_id}</code></p>
+        <p>This invoice either doesn&apos;t exist or you don&apos;t have access to it.</p>
+      </div>
+    )
+  }
+
+  // Step 2: fetch product info separately for each product_code
+  const productCodes = [...new Set(sales.map(s => s.product_code))]
+  const { data: products } = await supabase
+    .from('products')
+    .select('product_code, brands, type')
+    .in('product_code', productCodes)
+  const productMap = Object.fromEntries((products ?? []).map(p => [p.product_code, p]))
+
+  // Step 3: fetch patient if any
+  const patientId = sales[0].patient_id
+  let patient: { name: string; phone: string; address: string | null } | null = null
+  if (patientId) {
+    const { data: pt } = await supabase
+      .from('patients')
+      .select('name, phone, address')
+      .eq('patient_id', patientId)
+      .single()
+    patient = pt ?? null
+  }
+
+  const firstSale = sales[0]
   const saleDate = new Date(firstSale.sale_date)
 
   const subtotal = sales.reduce((sum, s) => sum + Number(s.sale_amount), 0)
@@ -123,15 +150,16 @@ export default async function InvoicePage({ params }: { params: { transaction_id
             </tr>
           </thead>
           <tbody>
-            {(sales as SaleRow[]).map((s, i) => {
+            {sales.map((s, i) => {
               const taxAmt = Number(s.sale_amount) * (Number(s.tax_rate) / 100)
               const lineTotal = Number(s.sale_amount) + taxAmt
+              const prod = productMap[s.product_code]
               return (
                 <tr key={s.sale_id} style={{ backgroundColor: i % 2 === 0 ? 'white' : '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
                   <td style={{ padding: '3mm 4mm', color: '#6b7280' }}>{i + 1}</td>
                   <td style={{ padding: '3mm 4mm', fontWeight: 500 }}>{s.product_code}</td>
                   <td style={{ padding: '3mm 4mm', color: '#4b5563' }}>
-                    {s.products ? `${s.products.brands ?? '—'} / ${s.products.type ?? '—'}` : '—'}
+                    {prod ? `${prod.brands ?? '—'} / ${prod.type ?? '—'}` : '—'}
                   </td>
                   <td style={{ padding: '3mm 4mm', textAlign: 'right' }}>₹{Number(s.sale_amount).toFixed(2)}</td>
                   <td style={{ padding: '3mm 4mm', textAlign: 'right', color: '#6b7280' }}>{s.tax_rate}% (₹{taxAmt.toFixed(2)})</td>
