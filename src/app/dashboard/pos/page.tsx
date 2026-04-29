@@ -49,6 +49,13 @@ export default async function PosPage() {
     .select('patient_id, name, phone')
     .order('name', { ascending: true })
 
+  // Fetch optical orders for the transactions in recent sales
+  const transactionIds = recentSales?.map(s => s.transaction_id).filter(Boolean) || []
+  const { data: orders } = await supabase
+    .from('optical_orders')
+    .select('transaction_id, status')
+    .in('transaction_id', transactionIds)
+
   return (
     <div>
       <h1 style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '1.5rem' }}>Opticals</h1>
@@ -58,7 +65,11 @@ export default async function PosPage() {
         userId={user.id} 
       />
 
-      <PosRecentSalesTable sales={recentSales || []} canEdit={hasRole(userRoles, 'store_manager')} />
+      <PosRecentSalesTable 
+        sales={recentSales || []} 
+        orders={orders || []}
+        canEdit={hasRole(userRoles, 'store_manager')} 
+      />
     </div>
   )
 }
