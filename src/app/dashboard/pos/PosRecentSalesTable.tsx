@@ -14,13 +14,50 @@ type RecentSale = {
   transaction_id: string | null
 }
 
+type CartGroup = {
+  transaction_id: string | null
+  sale_date: string
+  payment_mode: string
+  items: RecentSale[]
+  subtotal: number
+  totalWithTax: number
+}
+
+function groupByTransaction(sales: RecentSale[]): CartGroup[] {
+  const map = new Map<string, CartGroup>()
+
+  for (const sale of sales) {
+    const key = sale.transaction_id ?? sale.sale_id // fallback: old sales without transaction_id are solo rows
+    if (!map.has(key)) {
+      map.set(key, {
+        transaction_id: sale.transaction_id,
+        sale_date: sale.sale_date,
+        payment_mode: sale.payment_mode,
+        items: [],
+        subtotal: 0,
+        totalWithTax: 0,
+      })
+    }
+    const group = map.get(key)!
+    group.items.push(sale)
+    const amt = Number(sale.sale_amount)
+    group.subtotal += amt
+    group.totalWithTax += amt + amt * (Number(sale.tax_rate) / 100)
+  }
+
+  return Array.from(map.values())
+}
+
 export default function PosRecentSalesTable({ sales: initialSales, canEdit }: { sales: RecentSale[], canEdit: boolean }) {
   const supabase = createClient()
   const [sales, setSales] = useState<RecentSale[]>(initialSales)
   const [searchQuery, setSearchQuery] = useState('')
   const [paymentModeFilter, setPaymentModeFilter] = useState('')
 
-  // Inline edit state
+  // Expanded rows (show item breakdown)
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set())
+
+  // Inline edit state (per sale_id)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editAmount, setEditAmount] = useState<string>('')
   const [isSaving, setIsSaving] = useState(false)
@@ -34,6 +71,16 @@ export default function PosRecentSalesTable({ sales: initialSales, canEdit }: { 
     })
   }, [sales, searchQuery, paymentModeFilter])
 
+  const cartGroups = useMemo(() => groupByTransaction(filteredSales), [filteredSales])
+
+  const toggleExpand = (key: string) => {
+    setExpandedKeys(prev => {
+      const next = new Set(prev)
+      next.has(key) ? next.delete(key) : next.add(key)
+      return next
+    })
+  }
+
   const startEdit = (sale: RecentSale) => {
     setEditingId(sale.sale_id)
     setEditAmount(String(sale.sale_amount))
@@ -44,16 +91,9 @@ export default function PosRecentSalesTable({ sales: initialSales, canEdit }: { 
 
   const saveEdit = async (saleId: string) => {
     const newAmount = parseFloat(editAmount)
-    if (isNaN(newAmount) || newAmount < 0) {
-      setFeedback('Invalid amount')
-      return
-    }
+    if (isNaN(newAmount) || newAmount < 0) { setFeedback('Invalid amount'); return }
     setIsSaving(true)
-    const { error } = await supabase
-      .from('sales')
-      .update({ sale_amount: newAmount })
-      .eq('sale_id', saleId)
-
+    const { error } = await supabase.from('sales').update({ sale_amount: newAmount }).eq('sale_id', saleId)
     if (error) {
       setFeedback('Could not update. Please try again.')
     } else {
@@ -64,28 +104,29 @@ export default function PosRecentSalesTable({ sales: initialSales, canEdit }: { 
     setIsSaving(false)
   }
 
-  const cellStyle: React.CSSProperties = {
-    padding: '0.75rem 1rem',
-    borderBottom: '1px solid #e5e7eb',
-    color: '#111827',
-    whiteSpace: 'nowrap',
-    fontSize: '0.875rem',
+  const thStyle: React.CSSProperties = {
+    backgroundColor: '#f9fafb', fontWeight: 600, color: '#4b5563',
+    padding: '0.625rem 1rem', textAlign: 'left', borderBottom: '1px solid #e5e7eb',
+    whiteSpace: 'nowrap', fontSize: '0.8rem',
   }
 
-  const thStyle: React.CSSProperties = {
-    backgroundColor: '#f9fafb',
-    fontWeight: 600,
-    color: '#4b5563',
-    padding: '0.75rem 1rem',
-    textAlign: 'left',
-    borderBottom: '1px solid #e5e7eb',
-    whiteSpace: 'nowrap',
+  const tdStyle: React.CSSProperties = {
+    padding: '0.75rem 1rem', borderBottom: '1px solid #e5e7eb',
+    color: '#111827', fontSize: '0.875rem',
+  }
+
+  const subTdStyle: React.CSSProperties = {
+    padding: '0.375rem 1rem 0.375rem 2rem', color: '#4b5563', fontSize: '0.8rem',
+    borderBottom: '1px solid #f3f4f6', backgroundColor: '#f9fafb',
   }
 
   return (
     <div style={{ marginTop: '3rem' }}>
       <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '1rem', color: '#111827' }}>
-        Recent Sales <span style={{ fontSize: '0.875rem', fontWeight: 400, color: '#6b7280' }}>(last 7 days)</span>
+        Recent Sales{' '}
+        <span style={{ fontSize: '0.875rem', fontWeight: 400, color: '#6b7280' }}>
+          (last 7 days · {cartGroups.length} transaction{cartGroups.length !== 1 ? 's' : ''})
+        </span>
       </h2>
 
       {feedback && (
@@ -112,111 +153,128 @@ export default function PosRecentSalesTable({ sales: initialSales, canEdit }: { 
           <option value="UPI">UPI</option>
           <option value="Card">Card</option>
         </select>
-        <span style={{ color: '#6b7280', fontSize: '0.875rem' }}>{filteredSales.length} sale(s)</span>
       </div>
 
       <div style={{ backgroundColor: 'white', borderRadius: '0.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr>
+              <th style={thStyle}></th>
               <th style={thStyle}>Date & Time</th>
-              <th style={thStyle}>Product (SKU)</th>
-              <th style={thStyle}>Amount</th>
-              <th style={thStyle}>Tax</th>
+              <th style={thStyle}>Items</th>
+              <th style={thStyle}>Total (incl. tax)</th>
               <th style={thStyle}>Payment</th>
               <th style={thStyle}>Invoice</th>
               {canEdit && <th style={thStyle}>Edit</th>}
             </tr>
           </thead>
           <tbody>
-            {filteredSales.map(sale => {
-              const isEditing = editingId === sale.sale_id
-              const taxAmt = sale.sale_amount * (sale.tax_rate / 100)
+            {cartGroups.map(group => {
+              const key = group.transaction_id ?? group.items[0]?.sale_id
+              const isExpanded = expandedKeys.has(key)
+              const itemLabel = group.items.length === 1
+                ? group.items[0].product_code
+                : `${group.items.length} items`
+
               return (
-                <tr key={sale.sale_id} style={{ backgroundColor: isEditing ? '#fffbeb' : undefined }}>
-                  <td style={cellStyle}>{formatDateTime(sale.sale_date)}</td>
-                  <td style={{ ...cellStyle, fontWeight: 500 }}>{sale.product_code}</td>
-
-                  {/* Amount — inline editable */}
-                  <td style={cellStyle}>
-                    {isEditing ? (
-                      <div style={{ display: 'flex', gap: '0.375rem', alignItems: 'center' }}>
-                        <input
-                          type="number"
-                          value={editAmount}
-                          onChange={e => setEditAmount(e.target.value)}
-                          style={{ width: '90px', padding: '0.25rem 0.5rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '0.875rem' }}
-                          autoFocus
-                        />
-                        <button
-                          onClick={() => saveEdit(sale.sale_id)}
-                          disabled={isSaving}
-                          style={{ padding: '0.25rem 0.5rem', backgroundColor: '#059669', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}
-                        >
-                          {isSaving ? '…' : '✓'}
-                        </button>
-                        <button
-                          onClick={cancelEdit}
-                          style={{ padding: '0.25rem 0.5rem', backgroundColor: '#6b7280', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer', fontSize: '0.75rem' }}
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ) : (
-                      <strong>₹{sale.sale_amount}</strong>
-                    )}
-                  </td>
-
-                  <td style={{ ...cellStyle, color: '#6b7280' }}>
-                    {sale.tax_rate}% {taxAmt > 0 && <span>(₹{taxAmt.toFixed(0)})</span>}
-                  </td>
-
-                  <td style={cellStyle}>
-                    <span style={{
-                      padding: '0.2rem 0.5rem',
-                      borderRadius: '9999px',
-                      fontSize: '0.75rem',
-                      fontWeight: 500,
-                      backgroundColor: sale.payment_mode === 'UPI' ? '#dbeafe' : '#dcfce7',
-                      color: sale.payment_mode === 'UPI' ? '#1e40af' : '#166534',
-                    }}>
-                      {sale.payment_mode}
-                    </span>
-                  </td>
-
-                  {/* Invoice link */}
-                  <td style={cellStyle}>
-                    {sale.transaction_id ? (
-                      <a
-                        href={`/dashboard/invoice/${sale.transaction_id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ color: '#2563eb', textDecoration: 'none', fontSize: '0.8rem', fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: '3px' }}
-                      >
-                        🖨 Print
-                      </a>
-                    ) : (
-                      <span style={{ color: '#d1d5db', fontSize: '0.75rem' }}>—</span>
-                    )}
-                  </td>
-
-                  {/* Edit button */}
-                  {canEdit && (
-                    <td style={cellStyle}>
-                      {!isEditing && (
-                        <button
-                          onClick={() => startEdit(sale)}
-                          style={{ background: 'transparent', color: '#2563eb', border: '1px solid #bfdbfe', padding: '0.2rem 0.5rem', borderRadius: '0.25rem', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 500 }}
-                        >
-                          Edit
-                        </button>
+                <React.Fragment key={key}>
+                  {/* Cart summary row */}
+                  <tr style={{ cursor: group.items.length > 1 ? 'pointer' : undefined }}
+                    onClick={() => group.items.length > 1 && toggleExpand(key)}>
+                    <td style={{ ...tdStyle, width: '32px', color: '#9ca3af', fontSize: '0.75rem', paddingRight: 0 }}>
+                      {group.items.length > 1 ? (isExpanded ? '▾' : '▸') : ''}
+                    </td>
+                    <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>{formatDateTime(group.sale_date)}</td>
+                    <td style={{ ...tdStyle, color: group.items.length > 1 ? '#1d4ed8' : '#111827', fontWeight: 500 }}>
+                      {itemLabel}
+                    </td>
+                    <td style={tdStyle}>
+                      <strong>₹{group.totalWithTax.toFixed(2)}</strong>
+                      {group.totalWithTax !== group.subtotal && (
+                        <span style={{ color: '#9ca3af', fontSize: '0.75rem', marginLeft: '4px' }}>
+                          (₹{group.subtotal.toFixed(0)} + tax)
+                        </span>
                       )}
                     </td>
-                  )}
-                </tr>
+                    <td style={tdStyle}>
+                      <span style={{
+                        padding: '0.2rem 0.5rem', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 500,
+                        backgroundColor: group.payment_mode === 'UPI' ? '#dbeafe' : '#dcfce7',
+                        color: group.payment_mode === 'UPI' ? '#1e40af' : '#166534',
+                      }}>
+                        {group.payment_mode}
+                      </span>
+                    </td>
+                    <td style={tdStyle}>
+                      {group.transaction_id ? (
+                        <a
+                          href={`/dashboard/invoice/${group.transaction_id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={e => e.stopPropagation()}
+                          style={{ color: '#2563eb', textDecoration: 'none', fontSize: '0.8rem', fontWeight: 500 }}
+                        >
+                          🖨 Print
+                        </a>
+                      ) : (
+                        <span style={{ color: '#d1d5db', fontSize: '0.75rem' }}>—</span>
+                      )}
+                    </td>
+                    {canEdit && <td style={tdStyle}></td>}
+                  </tr>
+
+                  {/* Expanded item rows */}
+                  {isExpanded && group.items.map(item => {
+                    const isEditing = editingId === item.sale_id
+                    const taxAmt = Number(item.sale_amount) * (Number(item.tax_rate) / 100)
+                    return (
+                      <tr key={item.sale_id} style={{ backgroundColor: '#f9fafb' }}>
+                        <td style={subTdStyle}></td>
+                        <td style={subTdStyle}></td>
+                        <td style={subTdStyle}>{item.product_code}</td>
+                        <td style={subTdStyle}>
+                          {isEditing ? (
+                            <div style={{ display: 'flex', gap: '0.375rem', alignItems: 'center' }}>
+                              <input
+                                type="number"
+                                value={editAmount}
+                                onChange={e => setEditAmount(e.target.value)}
+                                style={{ width: '80px', padding: '0.2rem 0.4rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '0.8rem' }}
+                                autoFocus
+                                onClick={e => e.stopPropagation()}
+                              />
+                              <button onClick={e => { e.stopPropagation(); saveEdit(item.sale_id) }} disabled={isSaving}
+                                style={{ padding: '0.2rem 0.4rem', backgroundColor: '#059669', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer', fontSize: '0.7rem' }}>
+                                {isSaving ? '…' : '✓'}
+                              </button>
+                              <button onClick={e => { e.stopPropagation(); cancelEdit() }}
+                                style={{ padding: '0.2rem 0.4rem', backgroundColor: '#6b7280', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer', fontSize: '0.7rem' }}>
+                                ✕
+                              </button>
+                            </div>
+                          ) : (
+                            <>₹{item.sale_amount} <span style={{ color: '#9ca3af' }}>+{item.tax_rate}% (₹{taxAmt.toFixed(0)})</span></>
+                          )}
+                        </td>
+                        <td style={subTdStyle}></td>
+                        <td style={subTdStyle}></td>
+                        {canEdit && (
+                          <td style={subTdStyle}>
+                            {!isEditing && (
+                              <button onClick={e => { e.stopPropagation(); startEdit(item) }}
+                                style={{ background: 'transparent', color: '#2563eb', border: '1px solid #bfdbfe', padding: '0.15rem 0.4rem', borderRadius: '0.2rem', cursor: 'pointer', fontSize: '0.7rem' }}>
+                                Edit
+                              </button>
+                            )}
+                          </td>
+                        )}
+                      </tr>
+                    )
+                  })}
+                </React.Fragment>
               )
             })}
-            {filteredSales.length === 0 && (
+            {cartGroups.length === 0 && (
               <tr>
                 <td colSpan={canEdit ? 7 : 6} style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
                   No sales found.
