@@ -36,7 +36,7 @@ export default async function DashboardPage() {
 
         {(hasRole(userRoles, 'store_manager') || hasRole(userRoles, 'receptionist')) && (
           <div style={{ padding: '1.5rem', backgroundColor: 'white', borderRadius: '0.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: '600', marginBottom: '0.5rem' }}>Point of Sale</h2>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: '600', marginBottom: '0.5rem' }}>Opticals</h2>
             <p style={{ color: '#6b7280', marginBottom: '1rem' }}>Record a new sale and deduct from inventory.</p>
             <a href="/dashboard/pos" style={{ color: '#2563eb', textDecoration: 'none', fontWeight: '500' }}>Go to POS &rarr;</a>
           </div>

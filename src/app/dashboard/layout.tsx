@@ -37,7 +37,7 @@ export default async function DashboardLayout({
             <Link href="/dashboard/inventory" className={styles.navLink}>Inventory</Link>
           )}
           {(hasRole(userRoles, 'store_manager') || hasRole(userRoles, 'receptionist')) && (
-            <Link href="/dashboard/pos" className={styles.navLink}>Point of Sale</Link>
+            <Link href="/dashboard/pos" className={styles.navLink}>Opticals</Link>
           )}
           {(hasRole(userRoles, 'receptionist') || hasRole(userRoles, 'store_manager')) && (
             <Link href="/dashboard/patients" className={styles.navLink}>Patients</Link>

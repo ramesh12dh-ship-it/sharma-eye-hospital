@@ -15,6 +15,15 @@ type Patient = {
 
 const canEdit = (role: string) => role === 'admin' || role === 'receptionist'
 
+// Locale-neutral date formatter — avoids SSR/client hydration mismatch
+function formatDate(dateStr: string) {
+  const d = new Date(dateStr)
+  const day = String(d.getDate()).padStart(2, '0')
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const year = d.getFullYear()
+  return `${day}/${month}/${year}`
+}
+
 export default function PatientsTable({ initialPatients, userRole }: { initialPatients: Patient[], userRole: string }) {
   const router = useRouter()
   const supabase = createClient()
@@ -266,7 +275,7 @@ export default function PatientsTable({ initialPatients, userRole }: { initialPa
                       <td style={{ padding: '0.75rem 1rem', color: '#4b5563' }}>{p.age ?? '—'}</td>
                       <td style={{ padding: '0.75rem 1rem', color: '#4b5563', maxWidth: '200px' }}>{p.address ?? '—'}</td>
                       <td style={{ padding: '0.75rem 1rem', color: '#6b7280', whiteSpace: 'nowrap', fontSize: '0.875rem' }}>
-                        {new Date(p.created_at).toLocaleDateString()}
+                        {formatDate(p.created_at)}
                       </td>
                       {canEdit(userRole) && (
                         <td style={{ padding: '0.75rem 1rem' }}>

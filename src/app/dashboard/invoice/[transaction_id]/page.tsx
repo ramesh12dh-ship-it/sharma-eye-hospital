@@ -1,6 +1,7 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import Image from 'next/image'
+import InvoicePrintTrigger from './InvoicePrintTrigger'
 
 type SaleRow = {
   sale_id: string
@@ -59,8 +60,8 @@ export default async function InvoicePage({ params }: { params: { transaction_id
 
   return (
     <>
-      {/* Print trigger script */}
-      <script dangerouslySetInnerHTML={{ __html: 'window.onload = function() { window.print(); }' }} />
+      {/* Auto-print trigger (client component) */}
+      <InvoicePrintTrigger />
 
       <div id="invoice-root" style={{ fontFamily: "'Arial', sans-serif", colorScheme: 'light', backgroundColor: 'white', color: '#000', maxWidth: '210mm', margin: '0 auto', padding: '12mm 14mm' }}>
 
@@ -169,20 +170,20 @@ export default async function InvoicePage({ params }: { params: { transaction_id
           </p>
         </div>
 
-        {/* Print button — hidden in print */}
+        {/* Print/Close buttons — hidden during print */}
         <div className="no-print" style={{ textAlign: 'center', marginTop: '8mm' }}>
-          <button
-            onClick={() => window.print()}
-            style={{ backgroundColor: '#1e3a8a', color: 'white', border: 'none', padding: '0.75rem 2rem', borderRadius: '0.375rem', fontSize: '1rem', fontWeight: 600, cursor: 'pointer', marginRight: '1rem' }}
+          <a
+            href="javascript:window.print()"
+            style={{ display: 'inline-block', backgroundColor: '#1e3a8a', color: 'white', textDecoration: 'none', padding: '0.75rem 2rem', borderRadius: '0.375rem', fontSize: '1rem', fontWeight: 600, marginRight: '1rem' }}
           >
             🖨 Print Invoice
-          </button>
-          <button
-            onClick={() => window.close()}
-            style={{ backgroundColor: '#6b7280', color: 'white', border: 'none', padding: '0.75rem 2rem', borderRadius: '0.375rem', fontSize: '1rem', fontWeight: 600, cursor: 'pointer' }}
+          </a>
+          <a
+            href="javascript:window.close()"
+            style={{ display: 'inline-block', backgroundColor: '#6b7280', color: 'white', textDecoration: 'none', padding: '0.75rem 2rem', borderRadius: '0.375rem', fontSize: '1rem', fontWeight: 600 }}
           >
             Close
-          </button>
+          </a>
         </div>
       </div>
 
