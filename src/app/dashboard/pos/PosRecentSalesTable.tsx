@@ -249,7 +249,44 @@ export default function PosRecentSalesTable({ sales: initialSales, canEdit }: { 
                         <span style={{ color: '#d1d5db', fontSize: '0.75rem' }}>—</span>
                       )}
                     </td>
-                    {canEdit && <td style={tdStyle}></td>}
+                    {canEdit && (
+                      <td style={tdStyle}>
+                        {group.items.length === 1 && !group.is_voided && (
+                          <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            {editingId === group.items[0].sale_id ? (
+                               <div style={{ display: 'flex', gap: '0.375rem', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
+                                 <input
+                                   type="number"
+                                   value={editAmount}
+                                   onChange={e => setEditAmount(e.target.value)}
+                                   style={{ width: '70px', padding: '0.2rem 0.4rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '0.8rem' }}
+                                   autoFocus
+                                 />
+                                 <button onClick={() => saveEdit(group.items[0].sale_id)} disabled={isSaving}
+                                   style={{ padding: '0.2rem 0.4rem', backgroundColor: '#059669', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer', fontSize: '0.7rem' }}>
+                                   {isSaving ? '…' : '✓'}
+                                 </button>
+                                 <button onClick={() => cancelEdit()}
+                                   style={{ padding: '0.2rem 0.4rem', backgroundColor: '#6b7280', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer', fontSize: '0.7rem' }}>
+                                   ✕
+                                 </button>
+                               </div>
+                            ) : (
+                              <>
+                                <button onClick={e => { e.stopPropagation(); startEdit(group.items[0]) }}
+                                  style={{ background: 'transparent', color: '#2563eb', border: '1px solid #bfdbfe', padding: '0.15rem 0.4rem', borderRadius: '0.2rem', cursor: 'pointer', fontSize: '0.7rem' }}>
+                                  Edit
+                                </button>
+                                <button onClick={e => { e.stopPropagation(); handleVoid(group.items[0].sale_id) }}
+                                  style={{ background: 'transparent', color: '#dc2626', border: '1px solid #fecaca', padding: '0.15rem 0.4rem', borderRadius: '0.2rem', cursor: 'pointer', fontSize: '0.7rem' }}>
+                                  Void
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                    )}
                   </tr>
 
                   {isExpanded && group.items.map(item => {
