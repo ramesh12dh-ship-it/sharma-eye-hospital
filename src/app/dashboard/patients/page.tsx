@@ -1,6 +1,7 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import PatientsTable from './PatientsTable'
+import { hasRole } from '@/utils/roles'
 
 export default async function PatientsPage() {
   const supabase = await createClient()
@@ -12,12 +13,11 @@ export default async function PatientsPage() {
     .from('user_roles')
     .select('role')
     .eq('user_id', user.id)
-    .single()
 
-  const role = roleData?.role
+  const userRoles = roleData?.map(r => r.role) ?? []
+  const role = userRoles.includes('admin') ? 'admin' : (userRoles[0] ?? '')
 
-  const allowedRoles = ['admin', 'receptionist', 'store_manager', 'optician']
-  if (!role || !allowedRoles.includes(role)) {
+  if (!hasRole(userRoles, 'receptionist') && !hasRole(userRoles, 'store_manager') && !hasRole(userRoles, 'optician')) {
     return (
       <div>
         <h1 style={{ color: 'red', fontSize: '1.5rem', fontWeight: 'bold' }}>Access Denied</h1>

@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import ExportButton from './ExportButton'
 import ReportsTable from './ReportsTable'
 import styles from './reports.module.css'
+import { hasRole } from '@/utils/roles'
 
 export default async function ReportsPage() {
   const supabase = await createClient()
@@ -15,16 +16,15 @@ export default async function ReportsPage() {
     redirect('/')
   }
 
-  // Fetch role
   const { data: roleData } = await supabase
     .from('user_roles')
     .select('role')
     .eq('user_id', user.id)
-    .single()
 
-  const role = roleData?.role
+  const userRoles = roleData?.map(r => r.role) ?? []
+  const role = userRoles.includes('admin') ? 'admin' : (userRoles[0] ?? '')
 
-  if (role !== 'admin' && role !== 'accountant') {
+  if (!hasRole(userRoles, 'accountant')) {
     return (
       <div>
         <h1 style={{ color: 'red', fontSize: '1.5rem', fontWeight: 'bold' }}>Access Denied</h1>

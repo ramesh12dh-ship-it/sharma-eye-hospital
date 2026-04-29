@@ -3,27 +3,22 @@ import { redirect } from 'next/navigation'
 import PosForm from './PosForm'
 import PosRecentSalesTable from './PosRecentSalesTable'
 
+import { hasRole } from '@/utils/roles'
+
 export default async function PosPage() {
   const supabase = await createClient()
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/')
 
-  if (!user) {
-    redirect('/')
-  }
-
-  // Fetch role
   const { data: roleData } = await supabase
     .from('user_roles')
     .select('role')
     .eq('user_id', user.id)
-    .single()
 
-  const role = roleData?.role
+  const userRoles = roleData?.map(r => r.role) ?? []
 
-  if (role !== 'admin' && role !== 'store_manager') {
+  if (!hasRole(userRoles, 'store_manager') && !hasRole(userRoles, 'receptionist')) {
     return (
       <div>
         <h1 style={{ color: 'red', fontSize: '1.5rem', fontWeight: 'bold' }}>Access Denied</h1>
