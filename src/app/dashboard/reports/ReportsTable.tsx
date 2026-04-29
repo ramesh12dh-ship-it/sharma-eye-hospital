@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from 'react'
 import styles from './reports.module.css'
 import DeleteSaleButton from './DeleteSaleButton'
+import { formatDateTime } from '@/utils/date'
 
 type Sale = {
   sale_id: string
@@ -77,7 +78,7 @@ export default function ReportsTable({ sales, role }: { sales: Sale[], role: str
           <tbody>
             {filteredSales.map(sale => (
               <tr key={sale.sale_id}>
-                <td>{new Date(sale.sale_date).toLocaleString()}</td>
+                <td>{formatDateTime(sale.sale_date)}</td>
                 <td>{sale.product_code}</td>
                 <td><strong>₹{getAccountPrice(sale)}</strong></td>
                 <td>{sale.tax_rate}%</td>

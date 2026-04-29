@@ -250,7 +250,7 @@ export default function PatientsTable({ initialPatients, userRole }: { initialPa
                         <input value={editData.address} onChange={e => setEditData({ ...editData, address: e.target.value })} style={fieldStyle} />
                       </td>
                       <td style={{ padding: '0.5rem 0.75rem', color: '#6b7280', whiteSpace: 'nowrap', fontSize: '0.875rem' }}>
-                        {new Date(p.created_at).toLocaleDateString()}
+                        {formatDate(p.created_at)}
                       </td>
                       <td style={{ padding: '0.5rem 0.75rem', whiteSpace: 'nowrap' }}>
                         <button

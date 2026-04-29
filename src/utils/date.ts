@@ -1,0 +1,25 @@
+/**
+ * Locale-neutral date formatters.
+ * Never use Date.toLocaleString() / toLocaleDateString() in Client Components —
+ * Node and the browser resolve locales differently, causing React hydration mismatches.
+ */
+
+/** Returns "DD/MM/YYYY" */
+export function formatDate(dateStr: string | Date): string {
+  const d = new Date(dateStr)
+  const day = String(d.getDate()).padStart(2, '0')
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const year = d.getFullYear()
+  return `${day}/${month}/${year}`
+}
+
+/** Returns "DD/MM/YYYY, HH:MM" in 24-hour time */
+export function formatDateTime(dateStr: string | Date): string {
+  const d = new Date(dateStr)
+  const day = String(d.getDate()).padStart(2, '0')
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const year = d.getFullYear()
+  const hours = String(d.getHours()).padStart(2, '0')
+  const minutes = String(d.getMinutes()).padStart(2, '0')
+  return `${day}/${month}/${year}, ${hours}:${minutes}`
+}

@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState, useMemo } from 'react'
+import { formatDateTime } from '@/utils/date'
 
 type RecentSale = {
   sale_id: string
@@ -61,7 +62,7 @@ export default function PosRecentSalesTable({ sales }: { sales: RecentSale[] }) 
             {filteredSales.map(sale => (
               <tr key={sale.sale_id}>
                 <td style={{ padding: '0.75rem 1rem', borderBottom: '1px solid #e5e7eb', color: '#111827', whiteSpace: 'nowrap', fontSize: '0.875rem' }}>
-                  {new Date(sale.sale_date).toLocaleString()}
+                  {formatDateTime(sale.sale_date)}
                 </td>
                 <td style={{ padding: '0.75rem 1rem', borderBottom: '1px solid #e5e7eb', color: '#111827', whiteSpace: 'nowrap', fontSize: '0.875rem' }}>
                   {sale.product_code}
