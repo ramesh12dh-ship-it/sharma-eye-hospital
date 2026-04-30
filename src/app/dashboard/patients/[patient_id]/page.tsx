@@ -2,6 +2,7 @@ import { createClient } from '@/utils/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import { hasRole } from '@/utils/roles'
 import PatientFile from './PatientFile'
+import { AccessDenied } from '@/components/ui/AccessDenied'
 
 export default async function PatientFilePage({ params }: { params: Promise<{ patient_id: string }> }) {
   const { patient_id } = await params
@@ -15,10 +16,9 @@ export default async function PatientFilePage({ params }: { params: Promise<{ pa
   const userRoles = roleData?.map(r => r.role) ?? []
 
   if (!hasRole(userRoles, 'receptionist') && !hasRole(userRoles, 'store_manager') && !hasRole(userRoles, 'optician')) {
-    return <div style={{ padding: '2rem', color: 'red' }}>Access Denied</div>
+    return <AccessDenied resource="this patient file" />
   }
 
-  // Fetch patient
   const { data: patient } = await supabase
     .from('patients')
     .select('patient_id, name, phone, age, address, created_at')
@@ -27,14 +27,12 @@ export default async function PatientFilePage({ params }: { params: Promise<{ pa
 
   if (!patient) notFound()
 
-  // Fetch prescriptions
   const { data: prescriptions } = await supabase
     .from('prescriptions')
     .select('*')
     .eq('patient_id', patient_id)
     .order('created_at', { ascending: false })
 
-  // Fetch sales linked to this patient
   const { data: sales } = await supabase
     .from('sales')
     .select('sale_id, sale_date, product_code, sale_amount, tax_rate, payment_mode, transaction_id')
@@ -42,7 +40,6 @@ export default async function PatientFilePage({ params }: { params: Promise<{ pa
     .order('sale_date', { ascending: false })
     .limit(30)
 
-  // Fetch optical orders
   const { data: orders } = await supabase
     .from('optical_orders')
     .select('*')
@@ -50,6 +47,7 @@ export default async function PatientFilePage({ params }: { params: Promise<{ pa
     .order('created_at', { ascending: false })
 
   const canWrite = hasRole(userRoles, 'optician')
+  const canUpdateOrders = hasRole(userRoles, 'store_manager')
 
   return (
     <PatientFile
@@ -58,6 +56,7 @@ export default async function PatientFilePage({ params }: { params: Promise<{ pa
       sales={sales ?? []}
       orders={orders ?? []}
       canWrite={canWrite}
+      canUpdateOrders={canUpdateOrders}
       userId={user.id}
     />
   )

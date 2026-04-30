@@ -2,43 +2,35 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { Trash2 } from 'lucide-react'
 import { deleteSale } from './actions'
+import { toast } from '@/components/ui/Toast'
 
 export default function DeleteSaleButton({ saleId }: { saleId: string }) {
   const router = useRouter()
   const [isDeleting, setIsDeleting] = useState(false)
 
   const handleDelete = async () => {
-    if (!window.confirm('Are you sure you want to permanently DELETE this sale record? The inventory stock will automatically be restored.')) {
-      return
-    }
-
+    if (!window.confirm('Permanently delete this sale? Inventory stock will be restored.')) return
     setIsDeleting(true)
     const result = await deleteSale(saleId)
-    
     setIsDeleting(false)
-    
     if (result?.error) {
-      alert(result.error)
+      toast.error('Could not delete sale', result.error)
     } else {
+      toast.success('Sale deleted, stock restored')
       router.refresh()
     }
   }
 
   return (
-    <button 
+    <button
       onClick={handleDelete}
       disabled={isDeleting}
-      style={{
-        color: '#dc2626',
-        background: 'none',
-        border: 'none',
-        cursor: isDeleting ? 'not-allowed' : 'pointer',
-        fontWeight: 500,
-        opacity: isDeleting ? 0.5 : 1
-      }}
+      className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[12px] font-medium text-coral-600 transition-colors hover:bg-coral-50 disabled:opacity-50"
     >
-      {isDeleting ? 'Deleting...' : 'Delete Sale'}
+      <Trash2 size={13} />
+      {isDeleting ? 'Deleting…' : 'Delete'}
     </button>
   )
 }

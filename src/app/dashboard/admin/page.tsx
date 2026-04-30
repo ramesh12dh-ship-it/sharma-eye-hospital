@@ -2,6 +2,8 @@ import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import { hasRole } from '@/utils/roles'
 import UserManager from './UserManager'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { AccessDenied } from '@/components/ui/AccessDenied'
 
 export default async function AdminDashboard() {
   const supabase = await createClient()
@@ -17,31 +19,29 @@ export default async function AdminDashboard() {
   const userRoles = roleData?.map(r => r.role) ?? []
 
   if (!hasRole(userRoles, 'admin')) {
-    redirect('/dashboard')
+    return <AccessDenied resource="Admin tools" />
   }
 
-  // Fetch all user roles to list users
   const { data: allRoles } = await supabase
     .from('user_roles')
     .select('*')
     .order('email', { ascending: true })
 
-  // Group by user_id
-  const usersMap: Record<string, { user_id: string, email: string, roles: string[] }> = {}
-  
+  const usersMap: Record<string, { user_id: string; email: string; roles: string[] }> = {}
   allRoles?.forEach(row => {
     if (!usersMap[row.user_id]) {
       usersMap[row.user_id] = { user_id: row.user_id, email: row.email, roles: [] }
     }
     usersMap[row.user_id].roles.push(row.role)
   })
-
   const users = Object.values(usersMap)
 
   return (
-    <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
-      <h1 style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '2rem' }}>User Management</h1>
-      
+    <div>
+      <PageHeader
+        title="User management"
+        description="Add or remove role assignments for staff."
+      />
       <UserManager users={users} />
     </div>
   )

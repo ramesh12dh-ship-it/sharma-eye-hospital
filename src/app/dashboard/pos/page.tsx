@@ -2,8 +2,9 @@ import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import PosForm from './PosForm'
 import PosRecentSalesTable from './PosRecentSalesTable'
-
 import { hasRole } from '@/utils/roles'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { AccessDenied } from '@/components/ui/AccessDenied'
 
 export default async function PosPage() {
   const supabase = await createClient()
@@ -19,21 +20,14 @@ export default async function PosPage() {
   const userRoles = roleData?.map(r => r.role) ?? []
 
   if (!hasRole(userRoles, 'store_manager') && !hasRole(userRoles, 'receptionist')) {
-    return (
-      <div>
-        <h1 style={{ color: 'red', fontSize: '1.5rem', fontWeight: 'bold' }}>Access Denied</h1>
-        <p>You do not have permission to view the Point of Sale.</p>
-      </div>
-    )
+    return <AccessDenied resource="Point of Sale" />
   }
 
-  // Fetch available products
   const { data: products } = await supabase
     .from('products')
     .select('product_code, stock, sale_price_s, type, brands')
-    .gt('stock', 0) // Only show items in stock
+    .gt('stock', 0)
 
-  // Fetch recent sales (last 7 days)
   const sevenDaysAgo = new Date()
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
   const { data: recentSales } = await supabase
@@ -43,13 +37,11 @@ export default async function PosPage() {
     .order('sale_date', { ascending: false })
     .limit(20)
 
-  // Fetch patients for the patient selector
   const { data: patients } = await supabase
     .from('patients')
     .select('patient_id, name, phone')
     .order('name', { ascending: true })
 
-  // Fetch optical orders for the transactions in recent sales
   const transactionIds = recentSales?.map(s => s.transaction_id).filter(Boolean) || []
   const { data: orders } = await supabase
     .from('optical_orders')
@@ -58,17 +50,19 @@ export default async function PosPage() {
 
   return (
     <div>
-      <h1 style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '1.5rem' }}>Opticals</h1>
-      <PosForm 
-        availableProducts={products || []} 
-        patients={patients || []}
-        userId={user.id} 
+      <PageHeader
+        title="Opticals"
+        description="Pick products, attach a patient, and record the sale."
       />
-
-      <PosRecentSalesTable 
-        sales={recentSales || []} 
+      <PosForm
+        availableProducts={products || []}
+        patients={patients || []}
+        userId={user.id}
+      />
+      <PosRecentSalesTable
+        sales={recentSales || []}
         orders={orders || []}
-        canEdit={hasRole(userRoles, 'store_manager')} 
+        canEdit={hasRole(userRoles, 'store_manager')}
       />
     </div>
   )

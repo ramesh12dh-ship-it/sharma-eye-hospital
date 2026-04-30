@@ -1,75 +1,91 @@
 'use client'
 
 import React, { useState } from 'react'
+import Link from 'next/link'
 import { createClient } from '@/utils/supabase/client'
-import { formatDate, formatDateTime } from '@/utils/date'
+import { formatDate } from '@/utils/date'
+import {
+  ArrowLeft, Phone, MapPin, Calendar, Glasses, Plus, Paperclip,
+  FileText, Trash2, Printer, ArrowRight,
+} from 'lucide-react'
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { Input, Label } from '@/components/ui/Input'
+import { Badge, OrderStatusBadge } from '@/components/ui/Badge'
+import { TableScroll, Table, Thead, Th, Tr, Td } from '@/components/ui/Table'
+import { NumberStepper } from '@/components/ui/NumberStepper'
+import { toast } from '@/components/ui/Toast'
+import { cn } from '@/lib/utils'
+import { eyeStr } from '@/utils/optics'
 
 type Patient = {
   patient_id: string
-  name: string
-  phone: string
-  age: number | null
-  address: string | null
-  created_at: string
+  name: string; phone: string
+  age: number | null; address: string | null; created_at: string
 }
-
 type Prescription = {
-  prescription_id: string
-  created_at: string
+  prescription_id: string; created_at: string
   r_sph: number | null; r_cyl: number | null; r_axis: number | null; r_add: number | null
   l_sph: number | null; l_cyl: number | null; l_axis: number | null; l_add: number | null
-  pd: number | null
-  document_path: string | null
-  notes: string | null
+  pd: number | null; document_path: string | null; notes: string | null
 }
-
 type Sale = {
-  sale_id: string
-  sale_date: string
-  product_code: string
-  sale_amount: number
-  tax_rate: number
-  payment_mode: string
+  sale_id: string; sale_date: string; product_code: string
+  sale_amount: number; tax_rate: number; payment_mode: string
   transaction_id: string | null
 }
-
 type OpticalOrder = {
   order_id: string
   status: 'ordered' | 'in_workshop' | 'ready' | 'delivered' | 'cancelled'
-  expected_date: string | null
-  notes: string | null
-  created_at: string
+  expected_date: string | null; notes: string | null; created_at: string
 }
 
 type Props = {
-  patient: Patient
-  prescriptions: Prescription[]
-  sales: Sale[]
-  orders: OpticalOrder[]
+  patient: Patient; prescriptions: Prescription[]
+  sales: Sale[]; orders: OpticalOrder[]
   canWrite: boolean
+  /** True when the user can change order status (admin/store_manager). */
+  canUpdateOrders: boolean
   userId: string
-}
-
-// Format eye power into a compact string
-function eyeStr(sph: number | null, cyl: number | null, axis: number | null, add: number | null) {
-  if (sph == null && cyl == null) return null
-  const s = sph != null ? (sph >= 0 ? `+${sph.toFixed(2)}` : sph.toFixed(2)) : '—'
-  const c = cyl != null ? (cyl >= 0 ? `+${cyl.toFixed(2)}` : cyl.toFixed(2)) : '—'
-  const a = axis != null ? ` × ${axis}°` : ''
-  const ad = add != null ? `  ADD: +${add.toFixed(2)}` : ''
-  return `${s} / ${c}${a}${ad}`
 }
 
 const emptyRx = { r_sph: '', r_cyl: '', r_axis: '', r_add: '', l_sph: '', l_cyl: '', l_axis: '', l_add: '', pd: '', notes: '' }
 
-export default function PatientFile({ patient, prescriptions: initialPrescriptions, sales, orders, canWrite, userId }: Props) {
+export default function PatientFile({
+  patient, prescriptions: initialPrescriptions, sales, orders: initialOrders, canWrite, canUpdateOrders, userId,
+}: Props) {
   const supabase = createClient()
   const [prescriptions, setPrescriptions] = useState<Prescription[]>(initialPrescriptions)
+  const [orders, setOrders] = useState<OpticalOrder[]>(initialOrders)
   const [isAddingRx, setIsAddingRx] = useState(false)
   const [rxForm, setRxForm] = useState(emptyRx)
   const [rxFile, setRxFile] = useState<File | null>(null)
   const [isSaving, setIsSaving] = useState(false)
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error', text: string } | null>(null)
+  const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  const updateOrderStatus = async (
+    orderId: string,
+    newStatus: OpticalOrder['status'],
+  ) => {
+    setUpdatingOrderId(orderId)
+    const updateData: Partial<OpticalOrder> = { status: newStatus }
+    if (newStatus === 'delivered') {
+      (updateData as any).actual_delivery = new Date().toISOString()
+    }
+    const { error } = await supabase
+      .from('optical_orders')
+      .update(updateData)
+      .eq('order_id', orderId)
+    if (error) {
+      toast.error('Could not update order', error.message)
+    } else {
+      setOrders(prev => prev.map(o => (o.order_id === orderId ? { ...o, ...updateData } : o)))
+      if (newStatus === 'delivered') toast.success('Marked delivered')
+      else if (newStatus === 'cancelled') toast.info('Order cancelled')
+    }
+    setUpdatingOrderId(null)
+  }
 
   const setField = (field: keyof typeof emptyRx, val: string) =>
     setRxForm(prev => ({ ...prev, [field]: val }))
@@ -114,7 +130,6 @@ export default function PatientFile({ patient, prescriptions: initialPrescriptio
       const storagePath = `${patient.patient_id}/${newRx.prescription_id}.${ext}`
       const { error: uploadError } = await supabase.storage
         .from('prescriptions').upload(storagePath, rxFile, { upsert: true })
-
       if (!uploadError) {
         document_path = storagePath
         await supabase.from('prescriptions').update({ document_path }).eq('prescription_id', newRx.prescription_id)
@@ -130,7 +145,7 @@ export default function PatientFile({ patient, prescriptions: initialPrescriptio
   }
 
   const handleDeleteRx = async (rxId: string, docPath: string | null) => {
-    if (!confirm('Are you sure you want to delete this prescription?')) return
+    if (!confirm('Delete this prescription?')) return
     setIsSaving(true)
     if (docPath) await supabase.storage.from('prescriptions').remove([docPath])
     const { error } = await supabase.from('prescriptions').delete().eq('prescription_id', rxId)
@@ -143,165 +158,376 @@ export default function PatientFile({ patient, prescriptions: initialPrescriptio
     setIsSaving(false)
   }
 
-  const getStatusBadge = (status: string) => {
-    const styles: Record<string, any> = {
-      ordered: { bg: '#fef3c7', text: '#92400e' },
-      in_workshop: { bg: '#ffedd5', text: '#9a3412' },
-      ready: { bg: '#dcfce7', text: '#166534' },
-      delivered: { bg: '#dbeafe', text: '#1e40af' },
-      cancelled: { bg: '#fee2e2', text: '#991b1b' },
-    }
-    const s = styles[status] || { bg: '#f3f4f6', text: '#374151' }
-    return <span style={{ padding: '0.15rem 0.5rem', borderRadius: '9999px', fontSize: '0.7rem', fontWeight: 600, backgroundColor: s.bg, color: s.text, textTransform: 'uppercase' }}>{status.replace('_', ' ')}</span>
-  }
-
-  const card: React.CSSProperties = { backgroundColor: 'white', borderRadius: '0.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', padding: '1.5rem', marginBottom: '1.5rem' }
-  const label: React.CSSProperties = { fontSize: '0.7rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '2px' }
-  const inputStyle: React.CSSProperties = { width: '100%', padding: '0.4rem 0.6rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '0.9rem' }
-  const eyeInputStyle: React.CSSProperties = { width: '100%', padding: '0.35rem 0.5rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', fontSize: '0.85rem', textAlign: 'center' }
-
   const activeOrders = orders.filter(o => o.status !== 'delivered' && o.status !== 'cancelled')
 
   return (
-    <div style={{ maxWidth: '860px', margin: '0 auto', padding: '1.5rem 1rem' }}>
-      <a href="/dashboard/patients" style={{ color: '#6b7280', textDecoration: 'none', fontSize: '0.875rem', display: 'inline-flex', alignItems: 'center', gap: '4px', marginBottom: '1.25rem' }}>← Back to Patients</a>
+    <div className="mx-auto max-w-4xl space-y-5">
+      <Link
+        href="/dashboard/patients"
+        className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-ink-500 hover:text-ink-800"
+      >
+        <ArrowLeft size={13} /> Patients
+      </Link>
 
-      <div style={{ ...card, background: 'linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%)', color: 'white' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      {/* Hero card — gradient slate-blue */}
+      <div
+        className="relative overflow-hidden rounded-2xl border border-brand-700/30 p-7 text-white shadow-[var(--shadow-lift)]"
+        style={{
+          background:
+            'linear-gradient(135deg, var(--color-brand-700) 0%, var(--color-brand-500) 100%)',
+        }}
+      >
+        <div
+          aria-hidden
+          className="watermark absolute right-[-80px] top-[-80px] h-[280px] w-[280px]"
+          style={{ opacity: 0.12, filter: 'invert(1)' }}
+        />
+        <div className="relative flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 style={{ fontSize: '1.75rem', fontWeight: 'bold', margin: 0 }}>{patient.name}</h1>
-            <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.5rem', fontSize: '0.9rem', opacity: 0.9 }}>
-              <span>📞 {patient.phone}</span>
-              {patient.age && <span>🎂 {patient.age} yrs</span>}
-              {patient.address && <span>📍 {patient.address}</span>}
+            <p className="text-[11.5px] font-medium uppercase tracking-[0.16em] text-brand-100/80">
+              Patient file
+            </p>
+            <h1 className="mt-1 text-[28px] font-semibold tracking-tight text-white">{patient.name}</h1>
+            <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[13px] text-brand-100">
+              <span className="inline-flex items-center gap-1.5"><Phone size={13} /> {patient.phone}</span>
+              {patient.age && <span className="inline-flex items-center gap-1.5"><Calendar size={13} /> {patient.age} yrs</span>}
+              {patient.address && <span className="inline-flex items-center gap-1.5"><MapPin size={13} /> {patient.address}</span>}
             </div>
           </div>
-          <div style={{ textAlign: 'right', fontSize: '0.8rem', opacity: 0.8 }}>
-            <div style={{ fontSize: '1rem', fontWeight: 600 }}>{prescriptions.length} Prescriptions</div>
-            <div>{sales.length} Purchases</div>
+          <div className="text-right text-[12px] text-brand-100/90">
+            <div className="text-[15px] font-semibold text-white">{prescriptions.length} prescriptions</div>
+            <div>{sales.length} purchases</div>
           </div>
         </div>
       </div>
 
-      {feedback && <div style={{ padding: '0.625rem 1rem', borderRadius: '0.375rem', marginBottom: '1rem', fontSize: '0.875rem', backgroundColor: feedback.type === 'success' ? '#dcfce7' : '#fee2e2', color: feedback.type === 'success' ? '#166534' : '#b91c1c' }}>{feedback.text}</div>}
-
-      {/* ACTIVE ORDERS */}
-      {activeOrders.length > 0 && (
-        <div style={{ ...card, border: '2px solid #bfdbfe' }}>
-           <h2 style={{ fontSize: '1.125rem', fontWeight: 700, margin: '0 0 1rem', color: '#1e40af', display: 'flex', alignItems: 'center', gap: '8px' }}>
-             <span style={{ fontSize: '1.25rem' }}>🕶️</span> Active Optical Orders
-           </h2>
-           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-             {activeOrders.map(order => (
-               <div key={order.order_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem', backgroundColor: '#f0f7ff', borderRadius: '0.5rem' }}>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                       {getStatusBadge(order.status)}
-                       <span style={{ fontSize: '0.875rem', color: '#1e3a8a', fontWeight: 500 }}>
-                         Due: {order.expected_date ? formatDate(order.expected_date) : 'N/A'}
-                       </span>
-                    </div>
-                    {order.notes && <p style={{ margin: '0.375rem 0 0', fontSize: '0.8rem', color: '#4b5563' }}>{order.notes}</p>}
-                  </div>
-                  <a href="/dashboard/orders" style={{ fontSize: '0.75rem', color: '#2563eb', textDecoration: 'none', fontWeight: 600 }}>Track →</a>
-               </div>
-             ))}
-           </div>
+      {feedback && (
+        <div
+          className={cn(
+            'rounded-xl border px-4 py-2.5 text-[13px]',
+            feedback.type === 'success'
+              ? 'border-accent-200 bg-accent-50 text-accent-700'
+              : 'border-coral-200 bg-coral-50 text-coral-700',
+          )}
+        >
+          {feedback.text}
         </div>
       )}
 
-      <div style={card}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-          <h2 style={{ fontSize: '1.125rem', fontWeight: 700, margin: 0 }}>Prescriptions</h2>
-          {canWrite && !isAddingRx && <button onClick={() => setIsAddingRx(true)} style={{ backgroundColor: '#1d4ed8', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '0.375rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>+ New Prescription</button>}
-        </div>
-
-        {isAddingRx && (
-          <form onSubmit={handleSubmitRx} style={{ backgroundColor: '#f8fafc', borderRadius: '0.5rem', border: '1px solid #e2e8f0', padding: '1.25rem', marginBottom: '1.25rem' }}>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', marginBottom: '1rem' }}>
-                <thead><tr style={{ backgroundColor: '#e2e8f0' }}><th>Eye</th><th>SPH</th><th>CYL</th><th>AXIS</th><th>ADD</th></tr></thead>
-                <tbody>
-                  <tr><td style={{ fontWeight: 700, color: '#1d4ed8' }}>RE</td><td><input type="number" step="0.25" placeholder="+0.00" value={rxForm.r_sph} onChange={e => setField('r_sph', e.target.value)} style={eyeInputStyle} /></td><td><input type="number" step="0.25" placeholder="0.00" value={rxForm.r_cyl} onChange={e => setField('r_cyl', e.target.value)} style={eyeInputStyle} /></td><td><input type="number" min="0" max="180" placeholder="0" value={rxForm.r_axis} onChange={e => setField('r_axis', e.target.value)} style={eyeInputStyle} /></td><td><input type="number" step="0.25" placeholder="+0.00" value={rxForm.r_add} onChange={e => setField('r_add', e.target.value)} style={eyeInputStyle} /></td></tr>
-                  <tr style={{ backgroundColor: '#f1f5f9' }}><td style={{ fontWeight: 700, color: '#1d4ed8' }}>LE</td><td><input type="number" step="0.25" placeholder="+0.00" value={rxForm.l_sph} onChange={e => setField('l_sph', e.target.value)} style={eyeInputStyle} /></td><td><input type="number" step="0.25" placeholder="0.00" value={rxForm.l_cyl} onChange={e => setField('l_cyl', e.target.value)} style={eyeInputStyle} /></td><td><input type="number" min="0" max="180" placeholder="0" value={rxForm.l_axis} onChange={e => setField('l_axis', e.target.value)} style={eyeInputStyle} /></td><td><input type="number" step="0.25" placeholder="+0.00" value={rxForm.l_add} onChange={e => setField('l_add', e.target.value)} style={eyeInputStyle} /></td></tr>
-                </tbody>
-              </table>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
-              <div><div style={label}>PD (mm)</div><input type="number" step="0.5" placeholder="62.0" value={rxForm.pd} onChange={e => setField('pd', e.target.value)} style={inputStyle} /></div>
-              <div><div style={label}>Notes</div><input type="text" placeholder="e.g. Bifocal..." value={rxForm.notes} onChange={e => setField('notes', e.target.value)} style={inputStyle} /></div>
-            </div>
-            <div style={{ marginBottom: '1rem' }}>
-              <div style={label}>Upload Prescription Slip</div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.625rem 0.875rem', border: '1.5px dashed #cbd5e1', borderRadius: '0.375rem', cursor: 'pointer', backgroundColor: rxFile ? '#f0fdf4' : 'white', fontSize: '0.875rem' }}>
-                <span>{rxFile ? '✅' : '📎'}</span><span>{rxFile ? rxFile.name : 'Click to attach photo or PDF'}</span>
-                <input type="file" accept="image/*,.pdf" style={{ display: 'none' }} onChange={e => setRxFile(e.target.files?.[0] ?? null)} />
-              </label>
-            </div>
-            <div style={{ display: 'flex', gap: '0.75rem' }}><button type="submit" disabled={isSaving} style={{ backgroundColor: '#1d4ed8', color: 'white', border: 'none', padding: '0.5rem 1.5rem', borderRadius: '0.375rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>{isSaving ? 'Saving…' : 'Save Prescription'}</button><button type="button" onClick={() => { setIsAddingRx(false); setRxForm(emptyRx); setRxFile(null) }} style={{ backgroundColor: 'white', color: '#6b7280', border: '1px solid #d1d5db', padding: '0.5rem 1rem', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.875rem' }}>Cancel</button></div>
-          </form>
-        )}
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {prescriptions.map(rx => {
-            const re = eyeStr(rx.r_sph, rx.r_cyl, rx.r_axis, rx.r_add)
-            const le = eyeStr(rx.l_sph, rx.l_cyl, rx.l_axis, rx.l_add)
-            
-            return (
-              <div key={rx.prescription_id} style={{ border: '1px solid #e5e7eb', borderRadius: '0.375rem', padding: '0.875rem 1rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>{formatDate(rx.created_at)}</div>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    {rx.document_path && (
-                      <button onClick={() => openDocumentUrl(rx.document_path!)} style={{ fontSize: '0.75rem', color: '#2563eb', background: 'none', border: '1px solid #bfdbfe', padding: '0.15rem 0.5rem', borderRadius: '0.25rem', cursor: 'pointer' }}>📄 Slip</button>
-                    )}
-                    {canWrite && (
-                      <button onClick={() => handleDeleteRx(rx.prescription_id, rx.document_path)} style={{ fontSize: '0.75rem', color: '#dc2626', background: 'none', border: '1px solid #fecaca', padding: '0.15rem 0.5rem', borderRadius: '0.25rem', cursor: 'pointer' }}>🗑</button>
+      {activeOrders.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Glasses size={16} className="text-brand-600" /> Active optical orders
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {activeOrders.map(order => {
+              const isBusy = updatingOrderId === order.order_id
+              return (
+                <div
+                  key={order.order_id}
+                  className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-hairline bg-brand-50/40 p-3"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <OrderStatusBadge status={order.status} />
+                      <span className="text-[13px] font-medium text-brand-800">
+                        Due: {order.expected_date ? formatDate(order.expected_date) : 'N/A'}
+                      </span>
+                    </div>
+                    {order.notes && (
+                      <p className="mt-1.5 text-[13px] text-ink-600">{order.notes}</p>
                     )}
                   </div>
+
+                  {canUpdateOrders ? (
+                    <div className="flex items-center gap-1.5">
+                      {order.status === 'ordered' && (
+                        <Button size="sm" disabled={isBusy} onClick={() => updateOrderStatus(order.order_id, 'in_workshop')}>
+                          To workshop <ArrowRight size={12} />
+                        </Button>
+                      )}
+                      {order.status === 'in_workshop' && (
+                        <Button size="sm" disabled={isBusy}
+                          className="bg-accent-600 hover:bg-accent-700"
+                          onClick={() => updateOrderStatus(order.order_id, 'ready')}
+                        >
+                          Mark ready <ArrowRight size={12} />
+                        </Button>
+                      )}
+                      {order.status === 'ready' && (
+                        <Button size="sm" disabled={isBusy} onClick={() => updateOrderStatus(order.order_id, 'delivered')}>
+                          Mark delivered <ArrowRight size={12} />
+                        </Button>
+                      )}
+                      <Link
+                        href="/dashboard/orders"
+                        className="rounded-md px-2 py-1 text-[12px] font-medium text-ink-500 hover:bg-ink-100 hover:text-ink-800"
+                      >
+                        Open →
+                      </Link>
+                    </div>
+                  ) : (
+                    <Link
+                      href="/dashboard/orders"
+                      className="text-[12.5px] font-semibold text-brand-600 hover:text-brand-800"
+                    >
+                      Track →
+                    </Link>
+                  )}
                 </div>
-                {re && (
-                  <div style={{ fontSize: '0.875rem', marginTop: '0.375rem' }}>
-                    <span style={{ fontWeight: 700, color: '#1d4ed8', marginRight: '0.5rem' }}>RE</span>
-                    {re}
-                  </div>
-                )}
-                {le && (
-                  <div style={{ fontSize: '0.875rem' }}>
-                    <span style={{ fontWeight: 700, color: '#1d4ed8', marginRight: '0.5rem' }}>LE</span>
-                    {le}
-                  </div>
-                )}
-                {rx.pd && (
-                  <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: '0.25rem', borderTop: '1px dashed #e5e7eb', paddingTop: '0.25rem' }}>
-                    <span style={{ fontWeight: 600 }}>PD:</span> {rx.pd} mm
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      </div>
+              )
+            })}
+          </CardContent>
+        </Card>
+      )}
 
-      <div style={card}>
-        <h2 style={{ fontSize: '1.125rem', fontWeight: 700, margin: '0 0 1rem' }}>Purchase History</h2>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-            <thead><tr style={{ backgroundColor: '#f9fafb' }}><th style={{ padding: '0.5rem', textAlign: 'left' }}>Date</th><th style={{ padding: '0.5rem', textAlign: 'left' }}>Product</th><th style={{ padding: '0.5rem', textAlign: 'right' }}>Amount</th><th style={{ padding: '0.5rem', textAlign: 'left' }}>Payment</th><th style={{ padding: '0.5rem', textAlign: 'left' }}>Invoice</th></tr></thead>
-            <tbody>
-              {sales.map((s, i) => (
-                <tr key={s.sale_id} style={{ backgroundColor: i % 2 === 0 ? 'white' : '#f9fafb' }}>
-                  <td style={{ padding: '0.5rem', color: '#6b7280' }}>{formatDate(s.sale_date)}</td>
-                  <td style={{ padding: '0.5rem', fontWeight: 500 }}>{s.product_code}</td>
-                  <td style={{ padding: '0.5rem', textAlign: 'right' }}>₹{Number(s.sale_amount).toFixed(2)}</td>
-                  <td style={{ padding: '0.5rem' }}>{s.payment_mode}</td>
-                  <td style={{ padding: '0.5rem' }}>{s.transaction_id ? <a href={`/dashboard/invoice/${s.transaction_id}`} target="_blank" style={{ color: '#2563eb', textDecoration: 'none' }}>🖨</a> : '—'}</td>
+      <Card>
+        <CardHeader className="flex-row items-center justify-between">
+          <CardTitle>Prescriptions</CardTitle>
+          {canWrite && !isAddingRx && (
+            <Button size="sm" onClick={() => setIsAddingRx(true)}>
+              <Plus size={13} /> New prescription
+            </Button>
+          )}
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {isAddingRx && (
+            <form
+              onSubmit={handleSubmitRx}
+              className="rounded-xl border border-hairline bg-ink-50/50 p-4"
+            >
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-[12.5px] tabular">
+                  <thead>
+                    <tr className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-ink-500">
+                      <th className="px-2 py-1.5 text-left">Eye</th>
+                      <th className="px-2 py-1.5">SPH</th>
+                      <th className="px-2 py-1.5">CYL</th>
+                      <th className="px-2 py-1.5">AXIS</th>
+                      <th className="px-2 py-1.5">ADD</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <RxRow
+                      eye="RE" form={rxForm} setField={setField}
+                      keys={['r_sph', 'r_cyl', 'r_axis', 'r_add']}
+                    />
+                    <RxRow
+                      eye="LE" form={rxForm} setField={setField}
+                      keys={['l_sph', 'l_cyl', 'l_axis', 'l_add']}
+                    />
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-[120px_1fr]">
+                <div>
+                  <Label>PD (mm)</Label>
+                  <Input
+                    type="number" step="0.5" placeholder="62.0"
+                    value={rxForm.pd}
+                    onChange={e => setField('pd', e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label>Notes</Label>
+                  <Input
+                    placeholder="e.g. Bifocal…"
+                    value={rxForm.notes}
+                    onChange={e => setField('notes', e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <Label>Prescription slip (optional)</Label>
+                <label
+                  className={cn(
+                    'mt-1 flex cursor-pointer items-center gap-3 rounded-lg border border-dashed px-3.5 py-3 text-[13px] transition-colors',
+                    rxFile
+                      ? 'border-accent-300 bg-accent-50/50 text-accent-700'
+                      : 'border-ink-300 bg-white/60 text-ink-600 hover:bg-white',
+                  )}
+                >
+                  <Paperclip size={14} />
+                  <span className="truncate">{rxFile ? rxFile.name : 'Click to attach photo or PDF'}</span>
+                  <input
+                    type="file"
+                    accept="image/*,.pdf"
+                    className="hidden"
+                    onChange={e => setRxFile(e.target.files?.[0] ?? null)}
+                  />
+                </label>
+              </div>
+
+              <div className="mt-4 flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => { setIsAddingRx(false); setRxForm(emptyRx); setRxFile(null) }}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isSaving}>
+                  {isSaving ? 'Saving…' : 'Save prescription'}
+                </Button>
+              </div>
+            </form>
+          )}
+
+          <div className="space-y-2">
+            {prescriptions.length === 0 && !isAddingRx && (
+              <p className="py-6 text-center text-[13px] text-ink-400">
+                No prescriptions on file yet.
+              </p>
+            )}
+            {prescriptions.map(rx => {
+              const re = eyeStr(rx.r_sph, rx.r_cyl, rx.r_axis, rx.r_add)
+              const le = eyeStr(rx.l_sph, rx.l_cyl, rx.l_axis, rx.l_add)
+              return (
+                <div
+                  key={rx.prescription_id}
+                  className="rounded-xl border border-hairline bg-white p-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <Badge tone="muted">{formatDate(rx.created_at)}</Badge>
+                    <div className="flex gap-1">
+                      {rx.document_path && (
+                        <button
+                          onClick={() => openDocumentUrl(rx.document_path!)}
+                          className="inline-flex items-center gap-1 rounded-md border border-brand-200 bg-brand-50/60 px-1.5 py-0.5 text-[11.5px] font-medium text-brand-700 hover:bg-brand-100"
+                        >
+                          <FileText size={11} /> Slip
+                        </button>
+                      )}
+                      {canWrite && (
+                        <button
+                          onClick={() => handleDeleteRx(rx.prescription_id, rx.document_path)}
+                          className="inline-flex items-center gap-1 rounded-md border border-coral-200 bg-coral-50/60 px-1.5 py-0.5 text-[11.5px] font-medium text-coral-700 hover:bg-coral-100"
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <dl className="mt-3 space-y-1 tabular text-[13.5px]">
+                    {re && (
+                      <div className="flex gap-3">
+                        <dt className="w-7 font-semibold text-brand-700">RE</dt>
+                        <dd className="text-ink-800">{re}</dd>
+                      </div>
+                    )}
+                    {le && (
+                      <div className="flex gap-3">
+                        <dt className="w-7 font-semibold text-brand-700">LE</dt>
+                        <dd className="text-ink-800">{le}</dd>
+                      </div>
+                    )}
+                  </dl>
+                  {(rx.pd || rx.notes) && (
+                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-dashed border-hairline pt-2 text-[12px] text-ink-500">
+                      {rx.pd && <span><span className="font-medium text-ink-700">PD:</span> {rx.pd} mm</span>}
+                      {rx.notes && <span>{rx.notes}</span>}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Purchase history</CardTitle>
+        </CardHeader>
+        <CardContent className="px-0 pb-0">
+          <TableScroll>
+            <Table minWidth={640}>
+              <Thead>
+                <tr>
+                  <Th>Date</Th>
+                  <Th>Product</Th>
+                  <Th className="text-right">Amount</Th>
+                  <Th>Payment</Th>
+                  <Th>Invoice</Th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+              </Thead>
+              <tbody>
+                {sales.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-10 text-center text-[13px] text-ink-400">
+                      No purchases recorded.
+                    </td>
+                  </tr>
+                )}
+                {sales.map(s => (
+                  <Tr key={s.sale_id}>
+                    <Td className="whitespace-nowrap text-ink-500">{formatDate(s.sale_date)}</Td>
+                    <Td className="font-medium text-ink-900">{s.product_code}</Td>
+                    <Td className="text-right font-semibold text-ink-900">
+                      ₹{Number(s.sale_amount).toLocaleString('en-IN')}
+                    </Td>
+                    <Td>
+                      <Badge tone={s.payment_mode === 'UPI' ? 'brand' : 'neutral'}>
+                        {s.payment_mode}
+                      </Badge>
+                    </Td>
+                    <Td>
+                      {s.transaction_id ? (
+                        <a
+                          href={`/invoice/${s.transaction_id}`}
+                          target="_blank"
+                          className="inline-flex items-center gap-1 text-[12.5px] font-medium text-brand-600 hover:text-brand-800"
+                        >
+                          <Printer size={12} />
+                        </a>
+                      ) : <span className="text-ink-300">—</span>}
+                    </Td>
+                  </Tr>
+                ))}
+              </tbody>
+            </Table>
+          </TableScroll>
+        </CardContent>
+      </Card>
     </div>
+  )
+}
+
+function RxRow({
+  eye, form, setField, keys,
+}: {
+  eye: 'RE' | 'LE'
+  form: typeof emptyRx
+  setField: (k: keyof typeof emptyRx, v: string) => void
+  keys: [keyof typeof emptyRx, keyof typeof emptyRx, keyof typeof emptyRx, keyof typeof emptyRx]
+}) {
+  // Indices: 0=SPH, 1=CYL, 2=AXIS, 3=ADD — AXIS is integer 0–180, others are signed quarters.
+  return (
+    <tr className={eye === 'LE' ? 'bg-white/40' : ''}>
+      <td className="px-2 py-1.5 font-semibold text-brand-700">{eye}</td>
+      {keys.map((k, i) => {
+        const isAxis = i === 2
+        return (
+          <td key={k} className="px-1 py-1">
+            <NumberStepper
+              value={form[k]}
+              onChange={v => setField(k, v)}
+              step={isAxis ? 5 : 0.25}
+              precision={isAxis ? 0 : 2}
+              min={isAxis ? 0 : undefined}
+              max={isAxis ? 180 : undefined}
+              signed={!isAxis}
+              placeholder={isAxis ? '0' : '+0.00'}
+            />
+          </td>
+        )
+      })}
+    </tr>
   )
 }
