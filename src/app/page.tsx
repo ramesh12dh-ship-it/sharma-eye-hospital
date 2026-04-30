@@ -7,13 +7,39 @@ import { Watermark } from '@/components/brand/Watermark'
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ message: string }>
+  searchParams: Promise<{
+    message?: string
+    code?: string
+    error?: string
+    error_description?: string
+  }>
 }) {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (user) return redirect('/dashboard')
   const resolved = await searchParams
+
+  // Supabase OAuth that landed at "/" instead of "/auth/callback" — happens
+  // when redirectTo isn't fully in the Supabase Redirect URLs allowlist and
+  // GoTrue falls back to the project's Site URL. Exchange the code here so
+  // login completes anyway. (Fix the allowlist in the Supabase Dashboard for
+  // the canonical flow; this is the safety net.)
+  if (resolved.code) {
+    const { error } = await supabase.auth.exchangeCodeForSession(resolved.code)
+    if (!error || error.message?.toLowerCase().includes('already used')) {
+      return redirect('/dashboard')
+    }
+    return redirect(`/?message=${encodeURIComponent(error.message)}`)
+  }
+
+  // Supabase sometimes redirects with its own error params instead of a code
+  // (`?error=...&error_description=...`). Surface those as a friendly message.
+  if (resolved.error_description || resolved.error) {
+    const msg = resolved.error_description ?? resolved.error ?? 'Authentication failed'
+    return redirect(`/?message=${encodeURIComponent(msg)}`)
+  }
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (user) return redirect('/dashboard')
+
   const isPositive =
     resolved?.message?.toLowerCase().includes('check your email') ||
     resolved?.message?.toLowerCase().includes('successfully')

@@ -4,7 +4,7 @@
  * Admin always passes every check.
  */
 
-export type UserRole = 'admin' | 'store_manager' | 'receptionist' | 'optician' | 'accountant'
+export type UserRole = 'admin' | 'store_manager' | 'receptionist' | 'optician' | 'accountant' | 'doctor'
 
 /** Returns true if the user has the given role, OR is an admin. */
 export function hasRole(userRoles: string[], role: UserRole): boolean {
@@ -24,6 +24,7 @@ export function roleLabel(role: string): string {
     receptionist: 'Receptionist',
     optician: 'Optician',
     accountant: 'Accountant',
+    doctor: 'Doctor',
   }
   return labels[role] ?? role
 }

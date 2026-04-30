@@ -2,11 +2,11 @@
 
 import { createClient } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { hasRole } from '@/utils/roles'
 
 export async function deleteSale(saleId: string) {
   const supabase = await createClient()
 
-  // Verify user is admin
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Unauthorized' }
 
@@ -14,9 +14,9 @@ export async function deleteSale(saleId: string) {
     .from('user_roles')
     .select('role')
     .eq('user_id', user.id)
-    .single()
 
-  if (roleData?.role !== 'admin') {
+  const userRoles = roleData?.map(r => r.role) ?? []
+  if (!hasRole(userRoles, 'admin')) {
     return { error: 'Only admins can delete sales' }
   }
 
