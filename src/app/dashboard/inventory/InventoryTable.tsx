@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { Input, Label } from '@/components/ui/Input'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
-import { TableShell, Table, Thead, Th, Tr, Td, TableEmpty } from '@/components/ui/Table'
+import { TableShell, TableScroll, Table, Thead, Th, Tr, Td, TableEmpty } from '@/components/ui/Table'
 import { FilterBar } from '@/components/filters/FilterBar'
 import { FilterPanel, FilterSection } from '@/components/filters/FilterPanel'
 import { FilterChip } from '@/components/filters/FilterChip'
@@ -486,24 +486,28 @@ export default function InventoryTable({
       )}
 
       <TableShell>
-        <Table>
-          <Thead>
-            <tr>
-              <Th>SKU</Th>
-              <Th>Type</Th>
-              <Th>Brand</Th>
-              {isAdmin && showAllColumns && <Th>Lens W.</Th>}
-              {isAdmin && showAllColumns && <Th>Location</Th>}
-              <Th>Stock</Th>
-              {isAdmin && <Th className="text-right">Cost</Th>}
-              <Th className="text-right">Sale S</Th>
-              {isAdmin && <Th className="text-right">Sale A</Th>}
-              {isAdmin && <Th className="text-right">MRP</Th>}
-              {isAdmin && showAllColumns && <Th>Comments</Th>}
-              {isAdmin && showAllColumns && <Th>Added</Th>}
-              {isAdmin && <Th className="w-10" aria-label="Actions" />}
-            </tr>
-          </Thead>
+        <TableScroll>
+          {/* Min-width only kicks in when "Show all columns" is on — that's
+              when scroll is needed. Default view fits the viewport with no
+              scroll. The fade overlay in TableScroll signals overflow. */}
+          <Table minWidth={isAdmin && showAllColumns ? 1280 : undefined}>
+            <Thead>
+              <tr>
+                <Th>SKU</Th>
+                <Th>Type</Th>
+                <Th>Brand</Th>
+                {isAdmin && showAllColumns && <Th>Lens W.</Th>}
+                {isAdmin && showAllColumns && <Th>Location</Th>}
+                <Th>Stock</Th>
+                {isAdmin && <Th className="text-right">Cost</Th>}
+                <Th className="text-right">Sale S</Th>
+                {isAdmin && <Th className="text-right">Sale A</Th>}
+                {isAdmin && <Th className="text-right">MRP</Th>}
+                {isAdmin && showAllColumns && <Th>Comments</Th>}
+                {isAdmin && showAllColumns && <Th>Added</Th>}
+                {isAdmin && <Th className="w-10" aria-label="Actions" />}
+              </tr>
+            </Thead>
           <tbody>
             {paginatedProducts.map(p => (
               <Tr key={p.product_code}>
@@ -557,8 +561,9 @@ export default function InventoryTable({
                 }
               />
             )}
-          </tbody>
-        </Table>
+            </tbody>
+          </Table>
+        </TableScroll>
       </TableShell>
 
       {totalPages > 1 && (

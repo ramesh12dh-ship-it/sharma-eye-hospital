@@ -20,7 +20,8 @@ type Patient = {
   created_at: string
 }
 
-const canEdit = (role: string) => role === 'admin' || role === 'receptionist'
+const canEdit = (role: string) =>
+  role === 'admin' || role === 'receptionist' || role === 'store_manager'
 
 export default function PatientsTable({
   initialPatients, userRole,

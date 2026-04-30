@@ -121,16 +121,43 @@ export default function PosRecentSalesTable({
   }
 
   const handleVoid = async (saleId: string) => {
-    if (!confirm('Are you sure you want to void this sale?')) return
+    if (!confirm('Cancel this sale? Stock will be restored.')) return
     setIsSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { toast.error('Not signed in'); setIsSaving(false); return }
     const { error } = await supabase.rpc('void_sale', { target_sale_id: saleId, admin_user_id: user.id })
     if (error) {
-      toast.error('Could not void sale', error.message)
+      toast.error('Could not cancel sale', error.message)
     } else {
       setSales(sales.map(s => s.sale_id === saleId ? { ...s, is_voided: true } : s))
-      toast.success('Sale voided, stock restored')
+      toast.success('Sale cancelled, stock restored')
+    }
+    setIsSaving(false)
+  }
+
+  /** Cancel every line in a multi-item transaction. */
+  const handleCancelGroup = async (saleIds: string[]) => {
+    if (!confirm(`Cancel all ${saleIds.length} items in this sale? Stock will be restored.`)) return
+    setIsSaving(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { toast.error('Not signed in'); setIsSaving(false); return }
+
+    let succeeded = 0
+    let firstError: string | null = null
+    for (const id of saleIds) {
+      const { error } = await supabase.rpc('void_sale', { target_sale_id: id, admin_user_id: user.id })
+      if (!error) succeeded++
+      else if (!firstError) firstError = error.message
+    }
+
+    if (succeeded > 0) {
+      const cancelledSet = new Set(saleIds.slice(0, succeeded))
+      setSales(sales.map(s => cancelledSet.has(s.sale_id) ? { ...s, is_voided: true } : s))
+    }
+    if (firstError) {
+      toast.error(`Cancelled ${succeeded} of ${saleIds.length}`, firstError)
+    } else {
+      toast.success(`Cancelled ${succeeded} item${succeeded === 1 ? '' : 's'}, stock restored`)
     }
     setIsSaving(false)
   }
@@ -237,21 +264,35 @@ export default function PosRecentSalesTable({
                       </Td>
                       {canEdit && (
                         <Td className="text-right">
-                          {!isMulti && !group.is_voided && !isEditingThis && (
-                            <div className="flex justify-end gap-1">
-                              <button
-                                onClick={e => { e.stopPropagation(); startEdit(onlyItem) }}
-                                className="inline-flex items-center gap-1 rounded-md border border-brand-200 bg-brand-50/60 px-1.5 py-0.5 text-[11.5px] font-medium text-brand-700 hover:bg-brand-100"
-                              >
-                                <Pencil size={11} /> Edit
-                              </button>
-                              <button
-                                onClick={e => { e.stopPropagation(); handleVoid(onlyItem.sale_id) }}
-                                className="inline-flex items-center gap-1 rounded-md border border-coral-200 bg-coral-50/60 px-1.5 py-0.5 text-[11.5px] font-medium text-coral-700 hover:bg-coral-100"
-                              >
-                                <Ban size={11} /> Void
-                              </button>
-                            </div>
+                          {!group.is_voided && !isEditingThis && (
+                            isMulti ? (
+                              <div className="flex justify-end">
+                                <button
+                                  onClick={e => {
+                                    e.stopPropagation()
+                                    handleCancelGroup(group.items.filter(i => !i.is_voided).map(i => i.sale_id))
+                                  }}
+                                  className="inline-flex items-center gap-1 rounded-md border border-coral-200 bg-coral-50/60 px-1.5 py-0.5 text-[11.5px] font-medium text-coral-700 hover:bg-coral-100"
+                                >
+                                  <Ban size={11} /> Cancel all
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex justify-end gap-1">
+                                <button
+                                  onClick={e => { e.stopPropagation(); startEdit(onlyItem) }}
+                                  className="inline-flex items-center gap-1 rounded-md border border-brand-200 bg-brand-50/60 px-1.5 py-0.5 text-[11.5px] font-medium text-brand-700 hover:bg-brand-100"
+                                >
+                                  <Pencil size={11} /> Edit
+                                </button>
+                                <button
+                                  onClick={e => { e.stopPropagation(); handleVoid(onlyItem.sale_id) }}
+                                  className="inline-flex items-center gap-1 rounded-md border border-coral-200 bg-coral-50/60 px-1.5 py-0.5 text-[11.5px] font-medium text-coral-700 hover:bg-coral-100"
+                                >
+                                  <Ban size={11} /> Cancel
+                                </button>
+                              </div>
+                            )
                           )}
                           {isEditingThis && (
                             <div className="flex items-center justify-end gap-1.5" onClick={e => e.stopPropagation()}>
@@ -281,23 +322,68 @@ export default function PosRecentSalesTable({
                     </Tr>
 
                     {isExpanded &&
-                      group.items.map(item => (
-                        <Tr
-                          key={item.sale_id}
-                          className={cn('bg-ink-50/60 hover:bg-ink-50', item.is_voided && 'opacity-60 line-through')}
-                        >
-                          <Td />
-                          <Td />
-                          <Td className="pl-8 text-[12.5px] text-ink-700">{item.product_code}</Td>
-                          <Td />
-                          <Td className="text-ink-700">
-                            ₹{Number(item.sale_amount).toLocaleString('en-IN')}
-                          </Td>
-                          <Td />
-                          <Td />
-                          {canEdit && <Td />}
-                        </Tr>
-                      ))}
+                      group.items.map(item => {
+                        const isItemEditing = editingId === item.sale_id
+                        return (
+                          <Tr
+                            key={item.sale_id}
+                            className={cn('bg-ink-50/60 hover:bg-ink-50', item.is_voided && 'opacity-60 line-through')}
+                          >
+                            <Td />
+                            <Td />
+                            <Td className="pl-8 text-[12.5px] text-ink-700">{item.product_code}</Td>
+                            <Td />
+                            <Td className="text-ink-700">
+                              ₹{Number(item.sale_amount).toLocaleString('en-IN')}
+                            </Td>
+                            <Td />
+                            <Td />
+                            {canEdit && (
+                              <Td className="text-right">
+                                {!item.is_voided && !isItemEditing && (
+                                  <div className="flex justify-end gap-1">
+                                    <button
+                                      onClick={e => { e.stopPropagation(); startEdit(item) }}
+                                      className="inline-flex items-center gap-1 rounded-md border border-brand-200 bg-brand-50/60 px-1.5 py-0.5 text-[11px] font-medium text-brand-700 hover:bg-brand-100"
+                                    >
+                                      <Pencil size={10} /> Edit
+                                    </button>
+                                    <button
+                                      onClick={e => { e.stopPropagation(); handleVoid(item.sale_id) }}
+                                      className="inline-flex items-center gap-1 rounded-md border border-coral-200 bg-coral-50/60 px-1.5 py-0.5 text-[11px] font-medium text-coral-700 hover:bg-coral-100"
+                                    >
+                                      <Ban size={10} /> Cancel
+                                    </button>
+                                  </div>
+                                )}
+                                {isItemEditing && (
+                                  <div className="flex items-center justify-end gap-1.5" onClick={e => e.stopPropagation()}>
+                                    <Input
+                                      type="number"
+                                      value={editAmount}
+                                      onChange={e => setEditAmount(e.target.value)}
+                                      className="h-7 w-20 px-2 text-[12px]"
+                                    />
+                                    <button
+                                      onClick={() => saveEdit(item.sale_id)}
+                                      disabled={isSaving}
+                                      className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50"
+                                    >
+                                      <Check size={12} />
+                                    </button>
+                                    <button
+                                      onClick={cancelEdit}
+                                      className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-hairline text-ink-500 hover:bg-ink-100"
+                                    >
+                                      <X size={12} />
+                                    </button>
+                                  </div>
+                                )}
+                              </Td>
+                            )}
+                          </Tr>
+                        )
+                      })}
                   </React.Fragment>
                 )
               })}
