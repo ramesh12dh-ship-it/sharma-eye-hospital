@@ -115,6 +115,8 @@ export default function PosForm({
     setCart(cart.filter(i => i.product.product_code !== code))
   const handleAmountChange = (code: string, newAmount: number | '') =>
     setCart(cart.map(i => (i.product.product_code === code ? { ...i, saleAmount: newAmount } : i)))
+  const handleTaxRateChange = (code: string, newTaxRate: 5 | 12) =>
+    setCart(cart.map(i => (i.product.product_code === code ? { ...i, taxRate: newTaxRate } : i)))
 
   const grandTotal = cart.reduce((s, i) => s + (Number(i.saleAmount) || 0), 0)
   const taxAmount = cart.reduce((s, i) => s + (Number(i.saleAmount) || 0) * (i.taxRate / 100), 0)
@@ -180,9 +182,12 @@ export default function PosForm({
   }
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
+    // Bound the whole POS area to the viewport on lg+ so each pane scrolls
+    // internally instead of the whole page growing tall.
+    // (160px ≈ page header + padding above this grid.)
+    <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr] lg:h-[calc(100dvh-160px)] lg:max-h-[860px]">
       {/* Left — product picker */}
-      <div className="surface-card flex min-h-[560px] flex-col overflow-hidden">
+      <div className="surface-card flex min-h-[400px] flex-col overflow-hidden lg:min-h-0">
         <div className="border-b border-hairline p-4">
           <div className="relative">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
@@ -196,7 +201,7 @@ export default function PosForm({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-2">
+        <div className="min-h-0 flex-1 overflow-y-auto p-2">
           {filteredProducts.length === 0 && (
             <div className="flex h-40 items-center justify-center text-[13px] text-ink-400">
               No products match your search.
@@ -245,7 +250,7 @@ export default function PosForm({
       </div>
 
       {/* Right — cart */}
-      <div className="surface-card flex flex-col overflow-hidden">
+      <div className="surface-card flex min-h-[400px] flex-col overflow-hidden lg:min-h-0">
         <div className="flex items-center justify-between border-b border-hairline px-5 py-4">
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
@@ -266,8 +271,10 @@ export default function PosForm({
             <p className="text-[13px] text-ink-500">Pick products from the left to start.</p>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="flex flex-1 flex-col">
-            <div className="space-y-4 p-5">
+          <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+            {/* Scrollable middle: patient + cart items + order tracker.
+                The footer (total + payment + submit) stays anchored below. */}
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
               {/* Patient selector */}
               <div>
                 <Label className="mb-1.5 flex items-center gap-1.5">
@@ -330,7 +337,7 @@ export default function PosForm({
               </div>
 
               {/* Cart items */}
-              <div className="max-h-[240px] space-y-1 overflow-y-auto">
+              <div className="space-y-1">
                 {cart.map((item, idx) => (
                   <div
                     key={item.product.product_code}
@@ -352,7 +359,19 @@ export default function PosForm({
                       value={item.saleAmount}
                       onChange={e => handleAmountChange(item.product.product_code, e.target.value ? Number(e.target.value) : '')}
                       className="h-7 w-20 px-2 text-[12px]"
+                      aria-label="Sale amount"
                     />
+                    <select
+                      value={item.taxRate}
+                      onChange={e =>
+                        handleTaxRateChange(item.product.product_code, Number(e.target.value) as 5 | 12)
+                      }
+                      className="h-7 rounded-md border border-hairline bg-white px-1.5 text-[11.5px] text-ink-700 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500/25"
+                      aria-label="Tax rate"
+                    >
+                      <option value={5}>5%</option>
+                      <option value={12}>12%</option>
+                    </select>
                     <button
                       type="button"
                       onClick={() => handleRemoveItem(item.product.product_code)}
@@ -402,7 +421,7 @@ export default function PosForm({
               </div>
             </div>
 
-            <div className="mt-auto border-t border-hairline bg-white/40 p-5">
+            <div className="shrink-0 border-t border-hairline bg-white/40 p-5">
               <div className="mb-3 flex items-baseline justify-between border-b border-dashed border-hairline pb-3">
                 <span className="text-[13px] font-medium text-ink-600">Total</span>
                 <span className="tabular text-[20px] font-semibold tracking-tight text-ink-900">

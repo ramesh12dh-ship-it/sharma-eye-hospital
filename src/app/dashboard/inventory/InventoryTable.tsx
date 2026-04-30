@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { Input, Label } from '@/components/ui/Input'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
-import { TableShell, TableScroll, Table, Thead, Th, Tr, Td, TableEmpty } from '@/components/ui/Table'
+import { TableShell, Table, Thead, Th, Tr, Td, TableEmpty } from '@/components/ui/Table'
 import { FilterBar } from '@/components/filters/FilterBar'
 import { FilterPanel, FilterSection } from '@/components/filters/FilterPanel'
 import { FilterChip } from '@/components/filters/FilterChip'
@@ -73,6 +73,7 @@ export default function InventoryTable({
   const [feedback, setFeedback] = useState<Feedback | null>(null)
 
   const [filterPanelOpen, setFilterPanelOpen] = useState(false)
+  const [showAllColumns, setShowAllColumns] = useState(false)
   const { state: filters, setField, clearField, clearAll, replaceAll, activeCount } = useTableFilters(filterSerializers)
 
   const [currentPage, setCurrentPage] = useState(1)
@@ -469,74 +470,95 @@ export default function InventoryTable({
       </FilterBar>
 
       {/* ─── Table ──────────────────────────────────────────────────── */}
+      {/* Density toggle — admins can opt into seeing the long-tail columns
+          (Lens W., Location, Comments, Added). Default hides them so the
+          table fits the viewport with no horizontal scroll. */}
+      {isAdmin && (
+        <div className="-mb-3 flex items-center justify-end">
+          <button
+            type="button"
+            onClick={() => setShowAllColumns(v => !v)}
+            className="text-[12px] font-medium text-ink-500 hover:text-ink-800"
+          >
+            {showAllColumns ? 'Hide extra columns' : 'Show all columns'}
+          </button>
+        </div>
+      )}
+
       <TableShell>
-        <TableScroll>
-          <Table minWidth={isAdmin ? 1480 : 880}>
-            <Thead>
-              <tr>
-                <Th>SKU</Th>
-                <Th>Type</Th>
-                <Th>Brand</Th>
-                {isAdmin && <Th>Lens W.</Th>}
-                {isAdmin && <Th>Location</Th>}
-                <Th>Stock</Th>
-                {isAdmin && <Th>Cost</Th>}
-                <Th>Sale S</Th>
-                {isAdmin && <Th>Sale A</Th>}
-                {isAdmin && <Th>MRP</Th>}
-                {isAdmin && <Th>Comments</Th>}
-                {isAdmin && <Th>Added</Th>}
-                {isAdmin && <Th className="text-right">Actions</Th>}
-              </tr>
-            </Thead>
-            <tbody>
-              {paginatedProducts.map(p => (
-                <Tr key={p.product_code}>
-                  <Td className="font-medium text-ink-900">{p.product_code}</Td>
-                  <Td className="text-ink-600">{p.type ?? '—'}</Td>
-                  <Td>{p.brands ?? '—'}</Td>
-                  {isAdmin && <Td className="text-ink-500">{p.lens_width ?? '—'}</Td>}
-                  {isAdmin && <Td className="text-ink-500">{p.location ?? '—'}</Td>}
-                  <Td>
-                    <StockCell stock={p.stock} />
+        <Table>
+          <Thead>
+            <tr>
+              <Th>SKU</Th>
+              <Th>Type</Th>
+              <Th>Brand</Th>
+              {isAdmin && showAllColumns && <Th>Lens W.</Th>}
+              {isAdmin && showAllColumns && <Th>Location</Th>}
+              <Th>Stock</Th>
+              {isAdmin && <Th className="text-right">Cost</Th>}
+              <Th className="text-right">Sale S</Th>
+              {isAdmin && <Th className="text-right">Sale A</Th>}
+              {isAdmin && <Th className="text-right">MRP</Th>}
+              {isAdmin && showAllColumns && <Th>Comments</Th>}
+              {isAdmin && showAllColumns && <Th>Added</Th>}
+              {isAdmin && <Th className="w-10" aria-label="Actions" />}
+            </tr>
+          </Thead>
+          <tbody>
+            {paginatedProducts.map(p => (
+              <Tr key={p.product_code}>
+                <Td className="font-medium text-ink-900">{p.product_code}</Td>
+                <Td className="max-w-[200px] truncate text-ink-600" title={p.type ?? ''}>
+                  {p.type ?? '—'}
+                </Td>
+                <Td className="max-w-[140px] truncate" title={p.brands ?? ''}>
+                  {p.brands ?? '—'}
+                </Td>
+                {isAdmin && showAllColumns && <Td className="text-ink-500">{p.lens_width ?? '—'}</Td>}
+                {isAdmin && showAllColumns && <Td className="text-ink-500">{p.location ?? '—'}</Td>}
+                <Td>
+                  <StockCell stock={p.stock} />
+                </Td>
+                {isAdmin && <Td className="text-right">{fmt(p.cost_price)}</Td>}
+                <Td className="text-right">{fmt(p.sale_price_s)}</Td>
+                {isAdmin && <Td className="text-right">{fmt(p.sale_price_a)}</Td>}
+                {isAdmin && <Td className="text-right">{fmt(p.mrp)}</Td>}
+                {isAdmin && showAllColumns && (
+                  <Td className="max-w-[180px] truncate text-ink-500" title={p.comments ?? ''}>
+                    {p.comments ?? ''}
                   </Td>
-                  {isAdmin && <Td>{fmt(p.cost_price)}</Td>}
-                  <Td>{fmt(p.sale_price_s)}</Td>
-                  {isAdmin && <Td>{fmt(p.sale_price_a)}</Td>}
-                  {isAdmin && <Td>{fmt(p.mrp)}</Td>}
-                  {isAdmin && <Td className="max-w-[200px] truncate text-ink-500">{p.comments ?? ''}</Td>}
-                  {isAdmin && <Td className="text-ink-500">{p.date_added ? p.date_added.split('T')[0] : ''}</Td>}
-                  {isAdmin && (
-                    <Td className="text-right whitespace-nowrap">
-                      <button
-                        onClick={() => handleEditProduct(p)}
-                        className="mr-1 inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[12px] font-medium text-brand-600 hover:bg-brand-50"
-                      >
-                        <Pencil size={13} /> Edit
-                      </button>
-                      <button
-                        onClick={() => handleDeleteProduct(p.product_code)}
-                        className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[12px] font-medium text-coral-600 hover:bg-coral-50"
-                      >
-                        <Trash2 size={13} /> Delete
-                      </button>
-                    </Td>
-                  )}
-                </Tr>
-              ))}
-              {paginatedProducts.length === 0 && (
-                <TableEmpty
-                  colSpan={isAdmin ? 13 : 6}
-                  message={
-                    activeCount > 0 || filters.q
-                      ? 'No products match your filters.'
-                      : 'No products yet.'
-                  }
-                />
-              )}
-            </tbody>
-          </Table>
-        </TableScroll>
+                )}
+                {isAdmin && showAllColumns && (
+                  <Td className="text-ink-500">
+                    {p.date_added ? p.date_added.split('T')[0].slice(5) : ''}
+                  </Td>
+                )}
+                {isAdmin && (
+                  <Td className="w-10 text-right">
+                    <RowActions
+                      onEdit={() => handleEditProduct(p)}
+                      onDelete={() => handleDeleteProduct(p.product_code)}
+                    />
+                  </Td>
+                )}
+              </Tr>
+            ))}
+            {paginatedProducts.length === 0 && (
+              <TableEmpty
+                colSpan={
+                  isAdmin
+                    ? showAllColumns ? 13 : 9
+                    : 6
+                }
+                message={
+                  activeCount > 0 || filters.q
+                    ? 'No products match your filters.'
+                    : 'No products yet.'
+                }
+              />
+            )}
+          </tbody>
+        </Table>
       </TableShell>
 
       {totalPages > 1 && (
@@ -758,6 +780,29 @@ function FormField({
  * Stock cell rendering — out-of-stock is the long-tail default state, not an
  * alarm. Only "low" (1–2) gets a warning color; everything else is neutral.
  */
+function RowActions({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
+  return (
+    <div className="flex items-center justify-end gap-0.5">
+      <button
+        onClick={onEdit}
+        title="Edit"
+        aria-label="Edit"
+        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-brand-600 hover:bg-brand-50"
+      >
+        <Pencil size={14} />
+      </button>
+      <button
+        onClick={onDelete}
+        title="Delete"
+        aria-label="Delete"
+        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-coral-600 hover:bg-coral-50"
+      >
+        <Trash2 size={14} />
+      </button>
+    </div>
+  )
+}
+
 function StockCell({ stock }: { stock: number }) {
   if (stock >= 1 && stock <= 2) return <Badge tone="warn">{stock}</Badge>
   if (stock === 0) return <span className="text-ink-400">0</span>
