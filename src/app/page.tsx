@@ -17,17 +17,12 @@ export default async function LoginPage({
   const supabase = await createClient()
   const resolved = await searchParams
 
-  // Supabase OAuth that landed at "/" instead of "/auth/callback" — happens
-  // when redirectTo isn't fully in the Supabase Redirect URLs allowlist and
-  // GoTrue falls back to the project's Site URL. Exchange the code here so
-  // login completes anyway. (Fix the allowlist in the Supabase Dashboard for
-  // the canonical flow; this is the safety net.)
+  // OAuth redirect arrived at "/" instead of "/auth/callback" (Site URL
+  // fallback when redirectTo isn't an exact allowlist match). Forward to
+  // the Route Handler — it can write session cookies; a Server Component
+  // here cannot, which is why exchanging in place silently fails to log in.
   if (resolved.code) {
-    const { error } = await supabase.auth.exchangeCodeForSession(resolved.code)
-    if (!error || error.message?.toLowerCase().includes('already used')) {
-      return redirect('/dashboard')
-    }
-    return redirect(`/?message=${encodeURIComponent(error.message)}`)
+    return redirect(`/auth/callback?code=${encodeURIComponent(resolved.code)}`)
   }
 
   // Supabase sometimes redirects with its own error params instead of a code

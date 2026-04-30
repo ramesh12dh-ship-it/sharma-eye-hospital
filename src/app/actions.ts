@@ -30,8 +30,7 @@ export async function resetPassword(formData: FormData) {
     redirect('/?message=Please enter your email to reset password')
   }
 
-  // Use the origin from headers or default to localhost
-  const origin = process.env.NEXT_PUBLIC_SITE_URL || 'https://sharma-eye-hospital.vercel.app'
+  const origin = (process.env.NEXT_PUBLIC_SITE_URL || 'https://sharma-eye-hospital.vercel.app').replace(/\/$/, '')
 
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${origin}/auth/update-password`,
@@ -61,8 +60,10 @@ export async function updatePassword(formData: FormData) {
 
 export async function signInWithGoogle() {
   const supabase = await createClient()
-  const origin = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
-  
+  // Strip trailing slash so `${origin}/auth/callback` doesn't end up with a
+  // double slash and miss the Supabase Redirect URLs allowlist match.
+  const origin = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
+
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {

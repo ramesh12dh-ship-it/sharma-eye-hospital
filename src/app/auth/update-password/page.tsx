@@ -12,10 +12,10 @@ export default async function UpdatePasswordPage({
   const resolved = await searchParams
   const supabase = await createClient()
 
+  // Exchange via the Route Handler so session cookies actually persist.
+  // (RSC cookie writes are silently dropped — see src/proxy.ts.)
   if (resolved.code) {
-    const { error } = await supabase.auth.exchangeCodeForSession(resolved.code)
-    if (error) redirect(`/?message=${error.message}`)
-    redirect('/auth/update-password')
+    redirect(`/auth/callback?code=${encodeURIComponent(resolved.code)}&next=/auth/update-password`)
   }
 
   const { data: { user } } = await supabase.auth.getUser()
