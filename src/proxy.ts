@@ -14,6 +14,11 @@ import { createServerClient } from '@supabase/ssr'
  * the response. It's the canonical Supabase-on-Next-App-Router pattern.
  */
 export async function proxy(request: NextRequest) {
+  const host = request.headers.get('host')?.split(':')[0].toLowerCase()
+  if (host === 'internal.sharmaeye.com' && request.nextUrl.pathname === '/') {
+    return NextResponse.redirect(new URL('/login', request.url))
+  }
+
   let response = NextResponse.next({ request })
 
   const supabase = createServerClient(

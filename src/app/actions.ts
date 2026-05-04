@@ -15,7 +15,7 @@ export async function login(formData: FormData) {
   const { error } = await supabase.auth.signInWithPassword(data)
 
   if (error) {
-    redirect('/?message=Could not authenticate user')
+    redirect('/login?message=Could not authenticate user')
   }
 
   revalidatePath('/', 'layout')
@@ -27,7 +27,7 @@ export async function resetPassword(formData: FormData) {
   const email = formData.get('email') as string
 
   if (!email) {
-    redirect('/?message=Please enter your email to reset password')
+    redirect('/login?message=Please enter your email to reset password')
   }
 
   const origin = (process.env.NEXT_PUBLIC_SITE_URL || 'https://sharma-eye-hospital.vercel.app').replace(/\/$/, '')
@@ -37,10 +37,10 @@ export async function resetPassword(formData: FormData) {
   })
 
   if (error) {
-    redirect(`/?message=${error.message}`)
+    redirect(`/login?message=${error.message}`)
   }
 
-  redirect('/?message=Check your email for the password reset link')
+  redirect('/login?message=Check your email for the password reset link')
 }
 
 export async function updatePassword(formData: FormData) {
@@ -55,7 +55,7 @@ export async function updatePassword(formData: FormData) {
     redirect(`/auth/update-password?message=${error.message}`)
   }
 
-  redirect('/?message=Password updated successfully! You can now log in.')
+  redirect('/login?message=Password updated successfully! You can now log in.')
 }
 
 export async function signInWithGoogle() {
@@ -72,7 +72,7 @@ export async function signInWithGoogle() {
   })
 
   if (error) {
-    redirect('/?message=Could not authenticate with Google')
+    redirect('/login?message=Could not authenticate with Google')
   }
 
   if (data.url) {

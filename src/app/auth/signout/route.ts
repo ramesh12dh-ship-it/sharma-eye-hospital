@@ -2,7 +2,7 @@ import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 
-export async function POST(request: Request) {
+export async function POST() {
   const supabase = await createClient()
 
   const {
@@ -14,5 +14,5 @@ export async function POST(request: Request) {
   }
 
   revalidatePath('/', 'layout')
-  return redirect('/')
+  return redirect('/login')
 }

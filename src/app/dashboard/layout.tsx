@@ -19,6 +19,10 @@ export default async function DashboardLayout({
 
   const userRoles = roleData?.map(r => r.role) ?? []
 
+  if (userRoles.length === 0) {
+    redirect('/login?message=Staff access required. Ask an admin to assign a role.')
+  }
+
   return (
     // CSS Grid: sidebar reserves column 1 (244px) at lg+, single column on
     // smaller screens. `isolation: isolate` creates a stable stacking context

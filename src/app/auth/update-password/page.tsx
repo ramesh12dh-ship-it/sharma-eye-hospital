@@ -19,7 +19,7 @@ export default async function UpdatePasswordPage({
   }
 
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/?message=You must use a valid reset link to access this page')
+  if (!user) redirect('/login?message=You must use a valid reset link to access this page')
 
   return (
     <div className="relative flex min-h-dvh items-center justify-center overflow-hidden p-6">

@@ -15,8 +15,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Sharma Eye Hospital Dashboard",
-  description: "Internal Inventory and POS Management System",
+  title: {
+    default: "Sharma Eye Hospital Dhuri",
+    template: "%s | Sharma Eye Hospital",
+  },
+  description: "Trusted cataract surgery and eye care in Dhuri, Punjab.",
 };
 
 export default function RootLayout({

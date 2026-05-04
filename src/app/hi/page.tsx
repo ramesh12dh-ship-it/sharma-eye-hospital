@@ -2,10 +2,10 @@ import type { Metadata } from 'next'
 import { PublicHomePage, publicContent } from '@/components/public/PublicHomePage'
 
 export const metadata: Metadata = {
-  title: { absolute: publicContent.en.title },
-  description: publicContent.en.description,
+  title: { absolute: publicContent.hi.title },
+  description: publicContent.hi.description,
   alternates: {
-    canonical: '/',
+    canonical: '/hi',
     languages: {
       en: '/',
       hi: '/hi',
@@ -14,6 +14,6 @@ export const metadata: Metadata = {
   },
 }
 
-export default function HomePage() {
-  return <PublicHomePage locale="en" />
+export default function HindiHomePage() {
+  return <PublicHomePage locale="hi" />
 }

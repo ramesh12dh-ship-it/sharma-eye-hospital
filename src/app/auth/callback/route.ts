@@ -25,7 +25,7 @@ export async function GET(request: Request) {
   const supabaseError = searchParams.get('error_description') ?? searchParams.get('error')
   if (supabaseError) {
     return NextResponse.redirect(
-      `${origin}/?message=${encodeURIComponent(supabaseError)}`,
+      `${origin}/login?message=${encodeURIComponent(supabaseError)}`,
     )
   }
 
@@ -45,9 +45,9 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.redirect(
-      `${origin}/?message=${encodeURIComponent(error.message)}`,
+      `${origin}/login?message=${encodeURIComponent(error.message)}`,
     )
   }
 
-  return NextResponse.redirect(`${origin}/?message=Could not authenticate with Google`)
+  return NextResponse.redirect(`${origin}/login?message=Could not authenticate with Google`)
 }
