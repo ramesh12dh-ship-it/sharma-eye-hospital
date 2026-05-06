@@ -10,7 +10,7 @@ export function AccessDenied({ resource }: { resource: string }) {
         Access denied
       </h1>
       <p className="mt-2 max-w-sm text-[13.5px] text-ink-500">
-        You don't have permission to view {resource}. If you think this is wrong, ask an admin to check your role.
+        You do not have permission to view {resource}. If you think this is wrong, ask an admin to check your role.
       </p>
     </div>
   )

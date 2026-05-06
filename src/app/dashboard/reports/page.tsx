@@ -12,6 +12,20 @@ type SearchParams = {
   range?: string  // "YYYY-MM-DD..YYYY-MM-DD" — drives server query
 }
 
+type ReportSale = {
+  sale_id: string
+  product_code: string
+  sale_date: string
+  payment_mode: string
+  tax_rate: number
+  sale_amount: number | null
+  is_voided: boolean
+  patient_id: string | null
+  recorded_by: string
+  products: { sale_price_a: number | null } | null
+  patients: { name: string; phone: string } | null
+}
+
 function parseRange(range?: string): { from: Date; to: Date; label: string } {
   const now = new Date()
   if (range) {
@@ -63,16 +77,17 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
 
   if (error) console.error('Error fetching sales:', error)
 
-  const getAccountPrice = (sale: any) => Number(sale.products?.sale_price_a || 0)
-  const live = (sales ?? []).filter(s => !s.is_voided)
+  const reportSales = (sales ?? []) as unknown as ReportSale[]
+  const getAccountPrice = (sale: ReportSale) => Number(sale.products?.sale_price_a || 0)
+  const live = reportSales.filter(s => !s.is_voided)
   const totalSales = live.reduce((acc, s) => acc + getAccountPrice(s), 0)
   const totalTax = live.reduce((acc, s) => acc + (getAccountPrice(s) * Number(s.tax_rate)) / 100, 0)
 
-  const exportData = (sales ?? []).map(sale => ({
+  const exportData = reportSales.map(sale => ({
     Date: new Date(sale.sale_date).toLocaleString(),
     'Product Code': sale.product_code,
-    Patient: (sale as any).patients?.name ?? '',
-    'Phone': (sale as any).patients?.phone ?? '',
+    Patient: sale.patients?.name ?? '',
+    Phone: sale.patients?.phone ?? '',
     'Payment Mode': sale.payment_mode,
     'Tax Rate (%)': sale.tax_rate,
     'Amount (Accounts)': getAccountPrice(sale),
@@ -97,7 +112,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         {/* Supabase's TS inference returns joined relations as arrays even
             when the FK is many-to-one. Runtime is the single-object shape
             that ReportsTable expects, so cast through `unknown`. */}
-        <ReportsTable sales={(sales ?? []) as any} role={role} rangeLabel={label} />
+        <ReportsTable sales={reportSales} role={role} rangeLabel={label} />
       </Suspense>
     </div>
   )

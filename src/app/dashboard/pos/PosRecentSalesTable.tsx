@@ -70,7 +70,7 @@ export default function PosRecentSalesTable({
   const supabase = createClient()
   const [sales, setSales] = useState<RecentSale[]>(initialSales)
   const [searchQuery, setSearchQuery] = useState('')
-  const [paymentModeFilter, setPaymentModeFilter] = useState('')
+  const [paymentModeFilter] = useState('')
 
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set())
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -91,7 +91,8 @@ export default function PosRecentSalesTable({
   const toggleExpand = (key: string) => {
     setExpandedKeys(prev => {
       const next = new Set(prev)
-      next.has(key) ? next.delete(key) : next.add(key)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
       return next
     })
   }

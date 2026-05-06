@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import type { DateRangeFilter, PresenceFilter, StockFilter } from './types'
 
 type Serializer<T> = {
   encode: (v: T) => string | undefined         // undefined = omit from URL
@@ -20,7 +21,7 @@ type Serializer<T> = {
  * The shape is opaque to the table — the table consumes `state` and applies its
  * own filtering logic. This keeps the hook reusable across pages.
  */
-export function useTableFilters<S extends Record<string, any>>(
+export function useTableFilters<S extends Record<string, unknown>>(
   serializers: { [K in keyof S]: Serializer<S[K]> },
 ) {
   const router = useRouter()
@@ -109,7 +110,7 @@ export const stringArraySerializer = (): Serializer<string[]> => ({
   isDefault: v => v.length === 0,
 })
 
-export const stockSerializer = (): Serializer<import('./types').StockFilter> => ({
+export const stockSerializer = (): Serializer<StockFilter> => ({
   encode: v => {
     if (v.mode === 'any') return undefined
     if (v.mode === 'range') {
@@ -125,7 +126,7 @@ export const stockSerializer = (): Serializer<import('./types').StockFilter> => 
     if (!raw) return { mode: 'any' }
     if (raw === 'out' || raw === 'low' || raw === 'in') return { mode: raw }
     if (raw.startsWith('range')) {
-      const out: any = { mode: 'range' }
+      const out: StockFilter = { mode: 'range' }
       const parts = raw.split(',').slice(1)
       for (const p of parts) {
         const [k, v] = p.split(':')
@@ -139,7 +140,7 @@ export const stockSerializer = (): Serializer<import('./types').StockFilter> => 
   isDefault: v => v.mode === 'any',
 })
 
-export const presenceSerializer = (): Serializer<import('./types').PresenceFilter> => ({
+export const presenceSerializer = (): Serializer<PresenceFilter> => ({
   encode: v => {
     if (v.mode === 'any') return undefined
     if (v.mode === 'range') {
@@ -155,7 +156,7 @@ export const presenceSerializer = (): Serializer<import('./types').PresenceFilte
     if (!raw) return { mode: 'any' }
     if (raw === 'set' || raw === 'missing') return { mode: raw }
     if (raw.startsWith('range')) {
-      const out: any = { mode: 'range' }
+      const out: PresenceFilter = { mode: 'range' }
       for (const p of raw.split(',').slice(1)) {
         const [k, v] = p.split(':')
         if (k === 'min') out.min = Number(v)
@@ -168,7 +169,7 @@ export const presenceSerializer = (): Serializer<import('./types').PresenceFilte
   isDefault: v => v.mode === 'any',
 })
 
-export const dateRangeSerializer = (): Serializer<import('./types').DateRangeFilter> => ({
+export const dateRangeSerializer = (): Serializer<DateRangeFilter> => ({
   encode: v => {
     if (!v.from && !v.to) return undefined
     return [v.from ?? '', v.to ?? ''].join('..')

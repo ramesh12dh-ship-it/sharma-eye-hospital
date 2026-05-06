@@ -41,9 +41,6 @@ export function SidebarNav({ userRoles, userEmail }: Props) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const items = buildItems(userRoles).filter(i => i.visible)
 
-  // Close drawer on route change
-  useEffect(() => { setMobileOpen(false) }, [pathname])
-
   // Lock body scroll while drawer is open on mobile
   useEffect(() => {
     if (mobileOpen) {
@@ -60,7 +57,7 @@ export function SidebarNav({ userRoles, userEmail }: Props) {
         data-slot="mobile-topbar"
         className="glass sticky top-0 z-20 flex items-center justify-between px-4 py-3 lg:hidden"
       >
-        <Link href="/dashboard" className="flex items-center gap-2">
+        <Link href="/dashboard" onClick={() => setMobileOpen(false)} className="flex items-center gap-2">
           <Logo size={28} />
           <span className="text-[14px] font-semibold tracking-tight text-ink-900">
             Sharma Eye Hospital
@@ -133,6 +130,7 @@ export function SidebarNav({ userRoles, userEmail }: Props) {
                 <Link
                   key={item.href}
                   href={item.href}
+                  onClick={() => setMobileOpen(false)}
                   className={cn(
                     'group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-[14px] font-medium transition-all',
                     'duration-[var(--duration-fast)] ease-[var(--ease-out-soft)]',

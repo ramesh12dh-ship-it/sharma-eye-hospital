@@ -31,7 +31,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ transa
       <div className="p-8 font-mono text-sm">
         <h2 className="text-amber-700">No sales found</h2>
         <p>Transaction ID: <code>{transaction_id}</code></p>
-        <p>This invoice doesn't exist or you don't have access.</p>
+        <p>This invoice does not exist or you do not have access.</p>
       </div>
     )
   }

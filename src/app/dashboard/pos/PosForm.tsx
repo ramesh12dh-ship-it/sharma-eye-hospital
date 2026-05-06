@@ -30,6 +30,17 @@ type CartItem = {
   taxRate: 5 | 12
 }
 
+function isEyewearProduct(product: ProductLite) {
+  const type = (product.type || '').toLowerCase()
+  return type.includes('frame') || type.includes('lens')
+}
+
+function defaultExpectedDate() {
+  const date = new Date()
+  date.setDate(date.getDate() + 3)
+  return date.toISOString().split('T')[0]
+}
+
 export default function PosForm({
   availableProducts, patients, userId,
 }: { availableProducts: ProductLite[]; patients: PatientLite[]; userId: string }) {
@@ -56,7 +67,7 @@ export default function PosForm({
 
   // Fetch the patient's active optical orders so we can warn about duplicates
   useEffect(() => {
-    if (!selectedPatientId) { setPatientActiveOrders([]); return }
+    if (!selectedPatientId) return
     let cancelled = false
     ;(async () => {
       const { data, error } = await supabase
@@ -84,19 +95,6 @@ export default function PosForm({
       .slice(0, 6)
   }, [patients, patientSearch])
 
-  useEffect(() => {
-    const hasEyewear = cart.some(item => {
-      const type = (item.product.type || '').toLowerCase()
-      return type.includes('frame') || type.includes('lens')
-    })
-    if (hasEyewear && !shouldCreateOrder) {
-      setShouldCreateOrder(true)
-      const d = new Date()
-      d.setDate(d.getDate() + 3)
-      setExpectedDate(d.toISOString().split('T')[0])
-    }
-  }, [cart, shouldCreateOrder])
-
   const filteredProducts = useMemo(() => {
     if (!searchQuery) return availableProducts.slice(0, 50)
     const q = searchQuery.toLowerCase()
@@ -110,6 +108,10 @@ export default function PosForm({
   const handleSelectProduct = (product: ProductLite) => {
     if (cart.find(i => i.product.product_code === product.product_code)) return
     setCart([...cart, { product, saleAmount: product.sale_price_s || '', taxRate: 5 }])
+    if (isEyewearProduct(product) && !shouldCreateOrder) {
+      setShouldCreateOrder(true)
+      setExpectedDate(defaultExpectedDate())
+    }
   }
   const handleRemoveItem = (code: string) =>
     setCart(cart.filter(i => i.product.product_code !== code))
@@ -173,6 +175,7 @@ export default function PosForm({
     setCart([])
     setSearchQuery('')
     setSelectedPatientId(null)
+    setPatientActiveOrders([])
     setPatientSearch('')
     setPaymentMode('Cash')
     setShouldCreateOrder(false)
@@ -289,7 +292,7 @@ export default function PosForm({
                       </div>
                       <button
                         type="button"
-                        onClick={() => { setSelectedPatientId(null); setPatientSearch('') }}
+                        onClick={() => { setSelectedPatientId(null); setPatientSearch(''); setPatientActiveOrders([]) }}
                         className="rounded-md p-1 text-brand-600 hover:bg-brand-100"
                       >
                         <X size={14} />

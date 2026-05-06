@@ -5,6 +5,10 @@ import { getAdminClient } from '@/utils/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { hasRole } from '@/utils/roles'
 
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'Unexpected error'
+}
+
 /**
  * SECURE ADMIN CHECK
  * Ensures the requester is authenticated and has the 'admin' role.
@@ -36,8 +40,8 @@ export async function addRole(userId: string, email: string, role: string) {
     if (error) return { error: error.message }
     revalidatePath('/dashboard/admin')
     return { success: true }
-  } catch (e: any) {
-    return { error: e.message }
+  } catch (e: unknown) {
+    return { error: getErrorMessage(e) }
   }
 }
 
@@ -54,8 +58,8 @@ export async function removeRole(userId: string, role: string) {
     if (error) return { error: error.message }
     revalidatePath('/dashboard/admin')
     return { success: true }
-  } catch (e: any) {
-    return { error: e.message }
+  } catch (e: unknown) {
+    return { error: getErrorMessage(e) }
   }
 }
 
@@ -89,8 +93,8 @@ export async function createFullUser(email: string, password: string, role: stri
 
     revalidatePath('/dashboard/admin')
     return { success: true }
-  } catch (err: any) {
-    return { error: err.message }
+  } catch (err: unknown) {
+    return { error: getErrorMessage(err) }
   }
 }
 
@@ -106,7 +110,7 @@ export async function deleteFullUser(userId: string) {
     
     revalidatePath('/dashboard/admin')
     return { success: true }
-  } catch (err: any) {
-    return { error: err.message }
+  } catch (err: unknown) {
+    return { error: getErrorMessage(err) }
   }
 }

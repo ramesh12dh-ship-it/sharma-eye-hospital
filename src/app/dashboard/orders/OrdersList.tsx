@@ -48,7 +48,7 @@ const STATUS_LABELS: Record<string, string> = {
 }
 
 export default function OrdersList({
-  initialActiveOrders, initialDeliveredOrders, userRole,
+  initialActiveOrders, initialDeliveredOrders,
 }: {
   initialActiveOrders: Order[]
   initialDeliveredOrders: Order[]
@@ -65,7 +65,7 @@ export default function OrdersList({
 
   const updateStatus = async (orderId: string, newStatus: Order['status']) => {
     setIsUpdating(orderId)
-    const updateData: any = { status: newStatus }
+    const updateData: Partial<Pick<Order, 'status' | 'actual_delivery'>> = { status: newStatus }
     if (newStatus === 'delivered') updateData.actual_delivery = new Date().toISOString()
     const { error } = await supabase.from('optical_orders').update(updateData).eq('order_id', orderId)
     if (error) {

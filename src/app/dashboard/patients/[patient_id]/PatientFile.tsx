@@ -38,6 +38,7 @@ type OpticalOrder = {
   order_id: string
   status: 'ordered' | 'in_workshop' | 'ready' | 'delivered' | 'cancelled'
   expected_date: string | null; notes: string | null; created_at: string
+  actual_delivery?: string | null
 }
 
 type Props = {
@@ -71,7 +72,7 @@ export default function PatientFile({
     setUpdatingOrderId(orderId)
     const updateData: Partial<OpticalOrder> = { status: newStatus }
     if (newStatus === 'delivered') {
-      (updateData as any).actual_delivery = new Date().toISOString()
+      updateData.actual_delivery = new Date().toISOString()
     }
     const { error } = await supabase
       .from('optical_orders')

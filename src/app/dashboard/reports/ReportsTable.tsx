@@ -53,7 +53,7 @@ export default function ReportsTable({
   sales, role, rangeLabel,
 }: { sales: Sale[]; role: string; rangeLabel: string }) {
   const [panelOpen, setPanelOpen] = useState(false)
-  const { state: filters, setField, clearField, clearAll, replaceAll, activeCount } =
+  const { state: filters, setField, clearField, clearAll, activeCount } =
     useTableFilters(filterSerializers)
 
   // Date-range presets (set the URL `range` param; server refetches)

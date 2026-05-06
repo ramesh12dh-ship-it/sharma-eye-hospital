@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useMemo } from 'react'
+import { useEffect, useState, useRef, useMemo } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import Papa from 'papaparse'
 import { Plus, Download, Upload, FileText, Pencil, Trash2, X } from 'lucide-react'
@@ -39,6 +39,27 @@ type Product = {
 }
 
 type Feedback = { message: string; type: 'success' | 'error'; persistent?: boolean }
+type InventoryFilters = {
+  q: string
+  type: string[]
+  brand: string[]
+  location: string[]
+  stock: StockFilter
+  cost: PresenceFilter
+  sale_s: PresenceFilter
+  sale_a: PresenceFilter
+  mrp: PresenceFilter
+  added: DateRangeFilter
+}
+
+type CsvProductRow = Partial<Record<keyof Product, string | number | null>>
+type ProductUpsert = Partial<Product> & { product_code: string; stock: number }
+
+function parseCsvText(value: unknown) {
+  if (value === null || value === undefined) return null
+  const text = String(value).trim()
+  return text === '' ? null : text
+}
 
 // =============================================================
 // Filter definition
@@ -74,7 +95,8 @@ export default function InventoryTable({
 
   const [filterPanelOpen, setFilterPanelOpen] = useState(false)
   const [showAllColumns, setShowAllColumns] = useState(false)
-  const { state: filters, setField, clearField, clearAll, replaceAll, activeCount } = useTableFilters(filterSerializers)
+  const { state: filters, setField, clearField, clearAll, replaceAll, activeCount } =
+    useTableFilters<InventoryFilters>(filterSerializers)
 
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 50
@@ -197,8 +219,8 @@ export default function InventoryTable({
       header: true,
       skipEmptyLines: true,
       complete: async results => {
-        const rows = results.data as any[]
-        const validRows: any[] = []
+        const rows = results.data as CsvProductRow[]
+        const validRows: ProductUpsert[] = []
         const rowErrors: string[] = []
         const duplicateSkus: string[] = []
 
@@ -209,9 +231,9 @@ export default function InventoryTable({
             return
           }
           const product_code = String(row.product_code).trim()
-          const parseNumber = (val: any) => {
+          const parseNumber = (val: unknown) => {
             if (!val || String(val).trim() === '') return null
-            const num = parseFloat(val)
+            const num = parseFloat(String(val))
             return isNaN(num) ? 'INVALID' : num
           }
           const stock = parseNumber(row.stock) || 0
@@ -219,13 +241,17 @@ export default function InventoryTable({
           const sps = parseNumber(row.sale_price_s)
           const spa = parseNumber(row.sale_price_a)
           const mrp = parseNumber(row.mrp)
-          if ([cp, sps, spa, mrp, stock].includes('INVALID' as any)) {
+          if ([cp, sps, spa, mrp, stock].includes('INVALID')) {
             rowErrors.push(`Row ${rowNum} (${product_code}): Invalid number format`)
             return
           }
           validRows.push({
-            ...row,
             product_code,
+            lens_width: parseCsvText(row.lens_width),
+            brands: parseCsvText(row.brands),
+            location: parseCsvText(row.location),
+            type: parseCsvText(row.type),
+            comments: parseCsvText(row.comments),
             stock: stock as number,
             cost_price: cp as number | null,
             sale_price_s: sps as number | null,
@@ -234,7 +260,7 @@ export default function InventoryTable({
           })
         })
 
-        const uniqueRowsMap = new Map<string, any>()
+        const uniqueRowsMap = new Map<string, ProductUpsert>()
         for (const row of validRows) {
           if (uniqueRowsMap.has(row.product_code)) duplicateSkus.push(row.product_code)
           uniqueRowsMap.set(row.product_code, row)
@@ -684,9 +710,9 @@ function matchDate(dateStr: string, f: DateRangeFilter): boolean {
 // Active filter chips
 // =============================================================
 function renderActiveChips(
-  filters: any,
-  setField: (k: any, v: any) => void,
-  clearField: (k: any) => void,
+  filters: InventoryFilters,
+  setField: <K extends keyof InventoryFilters>(key: K, value: InventoryFilters[K]) => void,
+  clearField: <K extends keyof InventoryFilters>(key: K) => void,
   openPanel: () => void,
 ) {
   const chips: React.ReactNode[] = []
@@ -835,9 +861,11 @@ function triggerDownload(blob: Blob, filename: string) {
  * Cheap effect — relies on stable reference from useTableFilters.
  */
 function useMemoResetPage(filters: unknown, fn: () => void) {
-  const ref = useRef(filters)
-  if (ref.current !== filters) {
-    ref.current = filters
-    fn()
-  }
+  const previousFilters = useRef(filters)
+  useEffect(() => {
+    if (previousFilters.current !== filters) {
+      previousFilters.current = filters
+      fn()
+    }
+  }, [filters, fn])
 }

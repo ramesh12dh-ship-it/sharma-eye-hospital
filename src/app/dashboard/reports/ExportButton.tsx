@@ -7,7 +7,7 @@ import { toast } from '@/components/ui/Toast'
 
 export default function ExportButton({
   data, filename,
-}: { data: any[]; filename: string; className?: string }) {
+}: { data: Record<string, string | number>[]; filename: string; className?: string }) {
   const handleExport = () => {
     if (!data || data.length === 0) return toast.info('No data to export')
     const blob = new Blob([Papa.unparse(data)], { type: 'text/csv;charset=utf-8;' })
