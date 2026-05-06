@@ -9,7 +9,7 @@ export default async function PatientsPage() {
   const supabase = await createClient()
 
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/')
+  if (!user) redirect('/login')
 
   const { data: roleData } = await supabase
     .from('user_roles')

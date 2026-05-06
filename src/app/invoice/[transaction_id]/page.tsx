@@ -9,7 +9,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ transa
   const supabase = await createClient()
 
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/')
+  if (!user) redirect('/login')
 
   const { data: sales, error } = await supabase
     .from('sales')

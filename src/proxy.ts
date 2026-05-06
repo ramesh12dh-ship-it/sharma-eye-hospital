@@ -1,6 +1,54 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 
+const INTERNAL_HOST = 'internal.sharmaeye.com'
+const PUBLIC_HOSTS = new Set(['sharmaeye.com', 'www.sharmaeye.com'])
+
+const publicPaths = new Set([
+  '/',
+  '/cataract-surgery',
+  '/hi',
+  '/hi/cataract-surgery',
+  '/pa',
+  '/pa/cataract-surgery',
+])
+
+async function refreshSession(request: NextRequest) {
+  let response = NextResponse.next({ request })
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error('Missing Supabase session refresh environment variables')
+  }
+
+  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookies: {
+      getAll() {
+        return request.cookies.getAll()
+      },
+      setAll(cookiesToSet) {
+        // Mutate the request's cookies (so downstream RSCs see the fresh
+        // values) AND emit set-cookie headers on the response.
+        cookiesToSet.forEach(({ name, value }) =>
+          request.cookies.set(name, value),
+        )
+        response = NextResponse.next({ request })
+        cookiesToSet.forEach(({ name, value, options }) =>
+          response.cookies.set(name, value, options),
+        )
+      },
+    },
+  })
+
+  // Touching the user triggers session refresh if needed; the refreshed
+  // cookies are written via the setAll callback above.
+  await supabase.auth.getUser()
+
+  return response
+}
+
 /**
  * Supabase session refresher.
  *
@@ -15,40 +63,21 @@ import { createServerClient } from '@supabase/ssr'
  */
 export async function proxy(request: NextRequest) {
   const host = request.headers.get('host')?.split(':')[0].toLowerCase()
-  if (host === 'internal.sharmaeye.com' && request.nextUrl.pathname === '/') {
+  const { pathname } = request.nextUrl
+
+  if (host && PUBLIC_HOSTS.has(host)) {
+    if (publicPaths.has(pathname)) {
+      return NextResponse.next({ request })
+    }
+
+    return NextResponse.redirect(new URL('/', request.url))
+  }
+
+  if (host === INTERNAL_HOST && pathname === '/') {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  let response = NextResponse.next({ request })
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll()
-        },
-        setAll(cookiesToSet) {
-          // Mutate the request's cookies (so downstream RSCs see the fresh
-          // values) AND emit set-cookie headers on the response.
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value),
-          )
-          response = NextResponse.next({ request })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options),
-          )
-        },
-      },
-    },
-  )
-
-  // Touching the user triggers session refresh if needed; the refreshed
-  // cookies are written via the setAll callback above.
-  await supabase.auth.getUser()
-
-  return response
+  return refreshSession(request)
 }
 
 export const config = {

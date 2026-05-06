@@ -9,7 +9,7 @@ export default async function PatientFilePage({ params }: { params: Promise<{ pa
   const supabase = await createClient()
 
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/')
+  if (!user) redirect('/login')
 
   const { data: roleData } = await supabase
     .from('user_roles').select('role').eq('user_id', user.id)
