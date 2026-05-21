@@ -25,7 +25,7 @@ export default async function PosPage() {
 
   const { data: products } = await supabase
     .from('products')
-    .select('product_code, stock, sale_price_s, type, brands')
+    .select('product_code, stock, mrp, type, brands')
     .gt('stock', 0)
 
   const sevenDaysAgo = new Date()
@@ -48,6 +48,10 @@ export default async function PosPage() {
     .select('transaction_id, status')
     .in('transaction_id', transactionIds)
 
+  const recentSalesKey = (recentSales ?? [])
+    .map(s => `${s.sale_id}:${s.sale_amount}:${s.is_voided}`)
+    .join('|')
+
   return (
     <div>
       <PageHeader
@@ -60,6 +64,7 @@ export default async function PosPage() {
         userId={user.id}
       />
       <PosRecentSalesTable
+        key={recentSalesKey}
         sales={recentSales || []}
         orders={orders || []}
         canEdit={hasRole(userRoles, 'store_manager')}

@@ -35,7 +35,6 @@ export default async function DashboardPage() {
     readyOrdersRes,
     overdueOrdersRes,
     missingMrpRes,
-    missingPriceSRes,
   ] = await Promise.all([
     supabase
       .from('sales')
@@ -59,10 +58,6 @@ export default async function DashboardPage() {
       .from('products')
       .select('*', { count: 'exact', head: true })
       .is('mrp', null),
-    supabase
-      .from('products')
-      .select('*', { count: 'exact', head: true })
-      .is('sale_price_s', null),
   ])
 
   const todaySales = todaySalesRes.data ?? []
@@ -71,21 +66,14 @@ export default async function DashboardPage() {
   const readyOrders = readyOrdersRes.count ?? 0
   const overdueOrders = overdueOrdersRes.count ?? 0
   const missingMrp = missingMrpRes.count ?? 0
-  const missingPriceS = missingPriceSRes.count ?? 0
   const showCleanup = userRoles.includes('admin') || userRoles.includes('store_manager')
 
-  // Pick the most pressing cleanup signal: missing sale price (can't sell)
-  // takes priority over missing MRP (just billing detail).
-  const cleanupValue = missingPriceS > 0 ? missingPriceS : missingMrp
-  const cleanupLabel = missingPriceS > 0 ? 'Missing sale price' : 'Missing MRP'
-  const cleanupHref = missingPriceS > 0
-    ? '/dashboard/inventory?sale_s=missing'
-    : '/dashboard/inventory?mrp=missing'
-  const cleanupHint = missingPriceS > 0
+  const cleanupValue = missingMrp
+  const cleanupLabel = 'Missing MRP'
+  const cleanupHref = '/dashboard/inventory?mrp=missing'
+  const cleanupHint = missingMrp > 0
     ? 'Products that can’t be rung up'
-    : missingMrp > 0
-      ? 'Invoices will look incomplete'
-      : 'Catalogue is clean'
+    : 'Catalogue is clean'
 
   return (
     <div className="relative space-y-8">

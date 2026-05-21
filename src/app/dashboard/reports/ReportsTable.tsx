@@ -15,6 +15,7 @@ import {
   useTableFilters,
   stringSerializer, stringArraySerializer, dateRangeSerializer,
 } from '@/components/filters/useTableFilters'
+import { getReportSaleAmount } from './reportAccounting'
 
 /** YYYY-MM-DD in the browser's local timezone. */
 function localISO(d: Date) {
@@ -99,8 +100,6 @@ export default function ReportsTable({
     })
   }, [sales, filters])
 
-  const getAccountPrice = (sale: Sale) => Number(sale.products?.sale_price_a || 0)
-
   return (
     <div className="space-y-5">
       <FilterBar>
@@ -142,13 +141,13 @@ export default function ReportsTable({
 
       <TableShell>
         <TableScroll>
-          <Table minWidth={role === 'admin' ? 1080 : 920}>
+          <Table minWidth={role === 'admin' ? 1040 : 880}>
             <Thead>
               <tr>
                 <Th>Date & time</Th>
                 <Th>SKU</Th>
                 <Th>Patient</Th>
-                <Th className="text-right">Amount (Accounts)</Th>
+                <Th className="text-right">Sale amount</Th>
                 <Th>Tax</Th>
                 <Th>Payment</Th>
                 {role === 'admin' && <Th className="text-right">Actions</Th>}
@@ -168,7 +167,7 @@ export default function ReportsTable({
                     ) : <span className="text-ink-400 italic">Walk-in</span>}
                   </Td>
                   <Td className="text-right font-semibold text-ink-900">
-                    ₹{getAccountPrice(sale).toLocaleString('en-IN')}
+                    ₹{getReportSaleAmount(sale).toLocaleString('en-IN')}
                   </Td>
                   <Td className="text-ink-600">{sale.tax_rate}%</Td>
                   <Td>

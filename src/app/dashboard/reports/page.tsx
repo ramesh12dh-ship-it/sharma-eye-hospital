@@ -7,23 +7,16 @@ import { hasRole } from '@/utils/roles'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { AccessDenied } from '@/components/ui/AccessDenied'
 import { Card } from '@/components/ui/Card'
+import { buildReportExportData, calculateReportTotals, type ReportAccountingSale } from './reportAccounting'
 
 type SearchParams = {
   range?: string  // "YYYY-MM-DD..YYYY-MM-DD" — drives server query
 }
 
-type ReportSale = {
+type ReportSale = ReportAccountingSale & {
   sale_id: string
-  product_code: string
-  sale_date: string
-  payment_mode: string
-  tax_rate: number
-  sale_amount: number | null
-  is_voided: boolean
   patient_id: string | null
   recorded_by: string
-  products: { sale_price_a: number | null } | null
-  patients: { name: string; phone: string } | null
 }
 
 function parseRange(range?: string): { from: Date; to: Date; label: string } {
@@ -78,21 +71,8 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   if (error) console.error('Error fetching sales:', error)
 
   const reportSales = (sales ?? []) as unknown as ReportSale[]
-  const getAccountPrice = (sale: ReportSale) => Number(sale.products?.sale_price_a || 0)
-  const live = reportSales.filter(s => !s.is_voided)
-  const totalSales = live.reduce((acc, s) => acc + getAccountPrice(s), 0)
-  const totalTax = live.reduce((acc, s) => acc + (getAccountPrice(s) * Number(s.tax_rate)) / 100, 0)
-
-  const exportData = reportSales.map(sale => ({
-    Date: new Date(sale.sale_date).toLocaleString(),
-    'Product Code': sale.product_code,
-    Patient: sale.patients?.name ?? '',
-    Phone: sale.patients?.phone ?? '',
-    'Payment Mode': sale.payment_mode,
-    'Tax Rate (%)': sale.tax_rate,
-    'Amount (Accounts)': getAccountPrice(sale),
-    Voided: sale.is_voided ? 'Yes' : 'No',
-  }))
+  const { totalSales, totalTax, transactionCount } = calculateReportTotals(reportSales)
+  const exportData = buildReportExportData(reportSales)
 
   return (
     <div>
@@ -105,7 +85,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
       <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
         <StatCard label="Revenue" value={totalSales} accent rangeLabel={label} />
         <StatCard label="Tax collected" value={totalTax} rangeLabel={label} />
-        <StatCard label="Transactions" value={live.length} count rangeLabel={label} />
+        <StatCard label="Transactions" value={transactionCount} count rangeLabel={label} />
       </div>
 
       <Suspense fallback={null}>

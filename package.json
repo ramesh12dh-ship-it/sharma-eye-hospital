@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:workflows": "node --no-warnings --experimental-strip-types --test tests/workflows.test.ts",
     "test:domain": "node scripts/smoke-domain-separation.mjs"
   },
   "dependencies": {
