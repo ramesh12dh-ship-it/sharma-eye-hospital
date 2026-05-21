@@ -9,14 +9,16 @@ import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { toast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
+import {
+  calculateCartTotals,
+  createCartItem,
+  updateCartItemDiscount,
+  updateCartItemSaleAmount,
+  type PosCartItem,
+  type PosProduct,
+} from './pricing'
 
-type ProductLite = {
-  product_code: string
-  stock: number
-  sale_price_s: number | null
-  type: string | null
-  brands: string | null
-}
+type ProductLite = PosProduct
 
 type PatientLite = {
   patient_id: string
@@ -24,11 +26,7 @@ type PatientLite = {
   phone: string
 }
 
-type CartItem = {
-  product: ProductLite
-  saleAmount: number | ''
-  taxRate: 5 | 12
-}
+type CartItem = PosCartItem
 
 function isEyewearProduct(product: ProductLite) {
   const type = (product.type || '').toLowerCase()
@@ -107,7 +105,7 @@ export default function PosForm({
 
   const handleSelectProduct = (product: ProductLite) => {
     if (cart.find(i => i.product.product_code === product.product_code)) return
-    setCart([...cart, { product, saleAmount: product.sale_price_s || '', taxRate: 5 }])
+    setCart([...cart, createCartItem(product)])
     if (isEyewearProduct(product) && !shouldCreateOrder) {
       setShouldCreateOrder(true)
       setExpectedDate(defaultExpectedDate())
@@ -116,13 +114,20 @@ export default function PosForm({
   const handleRemoveItem = (code: string) =>
     setCart(cart.filter(i => i.product.product_code !== code))
   const handleAmountChange = (code: string, newAmount: number | '') =>
-    setCart(cart.map(i => (i.product.product_code === code ? { ...i, saleAmount: newAmount } : i)))
+    setCart(cart.map(i =>
+      i.product.product_code === code
+        ? updateCartItemSaleAmount(i, newAmount)
+        : i,
+    ))
+  const handleDiscountChange = (code: string, newDiscount: number | '') =>
+    setCart(cart.map(i => {
+      if (i.product.product_code !== code) return i
+      return updateCartItemDiscount(i, newDiscount)
+    }))
   const handleTaxRateChange = (code: string, newTaxRate: 5 | 12) =>
     setCart(cart.map(i => (i.product.product_code === code ? { ...i, taxRate: newTaxRate } : i)))
 
-  const grandTotal = cart.reduce((s, i) => s + (Number(i.saleAmount) || 0), 0)
-  const taxAmount = cart.reduce((s, i) => s + (Number(i.saleAmount) || 0) * (i.taxRate / 100), 0)
-  const totalWithTax = grandTotal + taxAmount
+  const { mrpTotal, discountTotal, taxAmount, totalWithTax } = calculateCartTotals(cart)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -185,10 +190,9 @@ export default function PosForm({
   }
 
   return (
-    // Bound the whole POS area to the viewport on lg+ so each pane scrolls
-    // internally instead of the whole page growing tall.
-    // (160px ≈ page header + padding above this grid.)
-    <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr] lg:h-[calc(100dvh-160px)] lg:max-h-[860px]">
+    // Keep the POS work area tall enough for low-height counters while still
+    // letting the product and cart panes scroll independently.
+    <div className="grid gap-5 lg:h-[calc(100dvh-128px)] lg:min-h-[640px] lg:grid-cols-[minmax(0,1fr)_minmax(420px,0.86fr)] xl:grid-cols-[minmax(0,1.08fr)_minmax(460px,0.92fr)]">
       {/* Left — product picker */}
       <div className="surface-card flex min-h-[400px] flex-col overflow-hidden lg:min-h-0">
         <div className="border-b border-hairline p-4">
@@ -237,7 +241,7 @@ export default function PosForm({
                   </div>
                   <div className="ml-3 text-right">
                     <div className="text-[13px] font-semibold text-ink-900">
-                      ₹{p.sale_price_s ?? '—'}
+                      MRP ₹{p.mrp ?? '—'}
                     </div>
                     <div className="mt-0.5">
                       {p.stock > 0
@@ -253,7 +257,7 @@ export default function PosForm({
       </div>
 
       {/* Right — cart */}
-      <div className="surface-card flex min-h-[400px] flex-col overflow-hidden lg:min-h-0">
+      <div className="surface-card flex min-h-[560px] flex-col overflow-hidden lg:min-h-0">
         <div className="flex items-center justify-between border-b border-hairline px-5 py-4">
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
@@ -277,7 +281,7 @@ export default function PosForm({
           <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
             {/* Scrollable middle: patient + cart items + order tracker.
                 The footer (total + payment + submit) stays anchored below. */}
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5 overscroll-contain">
               {/* Patient selector */}
               <div>
                 <Label className="mb-1.5 flex items-center gap-1.5">
@@ -340,49 +344,81 @@ export default function PosForm({
               </div>
 
               {/* Cart items */}
-              <div className="space-y-1">
+              <div className="space-y-2">
                 {cart.map((item, idx) => (
                   <div
                     key={item.product.product_code}
-                    className="flex items-center gap-2 rounded-lg border border-hairline bg-white/60 px-2.5 py-2"
+                    className="rounded-lg border border-hairline bg-white/60 p-3"
                   >
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink-100 text-[10.5px] font-semibold text-ink-600">
-                      {idx + 1}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-[12.5px] font-medium text-ink-900">
-                        {item.product.product_code}
+                    <div className="mb-2 flex items-start gap-2">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink-100 text-[10.5px] font-semibold text-ink-600">
+                        {idx + 1}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[12.5px] font-medium text-ink-900">
+                          {item.product.product_code}
+                        </div>
+                        <div className="truncate text-[11px] text-ink-500">
+                          {item.product.brands || 'No brand'} · {item.product.type || 'No type'}
+                        </div>
                       </div>
-                      <div className="truncate text-[11px] text-ink-500">
-                        {item.product.brands} · {item.product.type}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveItem(item.product.product_code)}
+                        className="rounded-md p-1 text-ink-400 hover:bg-coral-50 hover:text-coral-600"
+                        aria-label="Remove"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label className="text-[11px]">MRP</Label>
+                        <div className="mt-1 flex h-8 items-center rounded-md border border-hairline bg-ink-50 px-2 text-[12px] font-medium text-ink-700">
+                          ₹{item.product.mrp ?? '—'}
+                        </div>
+                      </div>
+                      <div>
+                        <Label className="text-[11px]">Discount %</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          step="0.01"
+                          value={item.discountPercent}
+                          onChange={e => handleDiscountChange(item.product.product_code, e.target.value ? Number(e.target.value) : '')}
+                          className="mt-1 h-8 px-2 text-[12px]"
+                          aria-label="Discount percent"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-[11px]">Sale price</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={item.saleAmount}
+                          onChange={e => handleAmountChange(item.product.product_code, e.target.value ? Number(e.target.value) : '')}
+                          className="mt-1 h-8 px-2 text-[12px]"
+                          aria-label="Sale price"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-[11px]">Tax</Label>
+                        <select
+                          value={item.taxRate}
+                          onChange={e =>
+                            handleTaxRateChange(item.product.product_code, Number(e.target.value) as 5 | 12)
+                          }
+                          className="mt-1 h-8 w-full rounded-md border border-hairline bg-white px-2 text-[12px] text-ink-700 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500/25"
+                          aria-label="Tax rate"
+                        >
+                          <option value={5}>5%</option>
+                          <option value={12}>12%</option>
+                        </select>
                       </div>
                     </div>
-                    <Input
-                      type="number"
-                      value={item.saleAmount}
-                      onChange={e => handleAmountChange(item.product.product_code, e.target.value ? Number(e.target.value) : '')}
-                      className="h-7 w-20 px-2 text-[12px]"
-                      aria-label="Sale amount"
-                    />
-                    <select
-                      value={item.taxRate}
-                      onChange={e =>
-                        handleTaxRateChange(item.product.product_code, Number(e.target.value) as 5 | 12)
-                      }
-                      className="h-7 rounded-md border border-hairline bg-white px-1.5 text-[11.5px] text-ink-700 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500/25"
-                      aria-label="Tax rate"
-                    >
-                      <option value={5}>5%</option>
-                      <option value={12}>12%</option>
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveItem(item.product.product_code)}
-                      className="rounded-md p-1 text-ink-400 hover:bg-coral-50 hover:text-coral-600"
-                      aria-label="Remove"
-                    >
-                      <X size={14} />
-                    </button>
                   </div>
                 ))}
               </div>
@@ -425,11 +461,25 @@ export default function PosForm({
             </div>
 
             <div className="shrink-0 border-t border-hairline bg-white/40 p-5">
-              <div className="mb-3 flex items-baseline justify-between border-b border-dashed border-hairline pb-3">
-                <span className="text-[13px] font-medium text-ink-600">Total</span>
-                <span className="tabular text-[20px] font-semibold tracking-tight text-ink-900">
-                  ₹{totalWithTax.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-                </span>
+              <div className="mb-3 space-y-1.5 border-b border-dashed border-hairline pb-3 text-[12.5px]">
+                <div className="flex items-center justify-between text-ink-500">
+                  <span>MRP total</span>
+                  <span className="tabular">₹{mrpTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex items-center justify-between text-ink-500">
+                  <span>Discount</span>
+                  <span className="tabular">-₹{discountTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex items-center justify-between text-ink-600">
+                  <span>Tax</span>
+                  <span className="tabular">₹{taxAmount.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex items-baseline justify-between pt-1">
+                  <span className="text-[13px] font-medium text-ink-600">Final total</span>
+                  <span className="tabular text-[20px] font-semibold tracking-tight text-ink-900">
+                    ₹{totalWithTax.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                  </span>
+                </div>
               </div>
 
               <div className="mb-3">

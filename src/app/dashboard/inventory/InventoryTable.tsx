@@ -5,7 +5,7 @@ import { createClient } from '@/utils/supabase/client'
 import Papa from 'papaparse'
 import { Plus, Download, Upload, FileText, Pencil, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { Input, Label } from '@/components/ui/Input'
+import { Input, Label, Select } from '@/components/ui/Input'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { TableShell, TableScroll, Table, Thead, Th, Tr, Td, TableEmpty } from '@/components/ui/Table'
@@ -22,6 +22,12 @@ import {
 } from '@/components/filters/useTableFilters'
 import type { PresenceFilter, StockFilter, DateRangeFilter } from '@/components/filters/types'
 import { cn } from '@/lib/utils'
+import {
+  inventoryTemplateHeaders,
+  normalizeInventoryCsvRows,
+  type InventoryCsvRow,
+  type InventoryUploadMode,
+} from './inventoryCsv'
 
 type Product = {
   product_code: string
@@ -32,7 +38,6 @@ type Product = {
   comments: string | null
   mrp: number | null
   cost_price: number | null
-  sale_price_s: number | null
   sale_price_a: number | null
   stock: number
   date_added: string
@@ -46,19 +51,9 @@ type InventoryFilters = {
   location: string[]
   stock: StockFilter
   cost: PresenceFilter
-  sale_s: PresenceFilter
   sale_a: PresenceFilter
   mrp: PresenceFilter
   added: DateRangeFilter
-}
-
-type CsvProductRow = Partial<Record<keyof Product, string | number | null>>
-type ProductUpsert = Partial<Product> & { product_code: string; stock: number }
-
-function parseCsvText(value: unknown) {
-  if (value === null || value === undefined) return null
-  const text = String(value).trim()
-  return text === '' ? null : text
 }
 
 // =============================================================
@@ -71,10 +66,21 @@ const filterSerializers = {
   location: stringArraySerializer(),
   stock:    stockSerializer(),
   cost:     presenceSerializer(),
-  sale_s:   presenceSerializer(),
   sale_a:   presenceSerializer(),
   mrp:      presenceSerializer(),
   added:    dateRangeSerializer(),
+}
+
+const uploadModeLabels: Record<InventoryUploadMode, string> = {
+  safe: 'safe update',
+  'stock-only': 'stock-only update',
+  rewrite: 'full rewrite',
+}
+
+const uploadModeHelp: Record<InventoryUploadMode, string> = {
+  safe: 'Default: updates only non-empty values from columns present in the CSV. Blank cells do not clear existing data.',
+  'stock-only': 'Updates stock only. CSV must include product_code and stock; every other column is ignored.',
+  rewrite: 'Admin-only destructive mode: rewrites the full product row from the CSV. Blank cells clear existing fields; blank stock becomes 0.',
 }
 
 // =============================================================
@@ -92,6 +98,7 @@ export default function InventoryTable({
   const [isUploading, setIsUploading] = useState(false)
   const [newProduct, setNewProduct] = useState<Partial<Product>>({ stock: 0 })
   const [feedback, setFeedback] = useState<Feedback | null>(null)
+  const [uploadMode, setUploadMode] = useState<InventoryUploadMode>('safe')
 
   const [filterPanelOpen, setFilterPanelOpen] = useState(false)
   const [showAllColumns, setShowAllColumns] = useState(false)
@@ -135,7 +142,6 @@ export default function InventoryTable({
 
       if (!matchStock(p.stock, filters.stock)) return false
       if (!matchPresence(p.cost_price, filters.cost)) return false
-      if (!matchPresence(p.sale_price_s, filters.sale_s)) return false
       if (!matchPresence(p.sale_price_a, filters.sale_a)) return false
       if (!matchPresence(p.mrp, filters.mrp)) return false
       if (!matchDate(p.date_added, filters.added)) return false
@@ -199,8 +205,7 @@ export default function InventoryTable({
   }
 
   const handleDownloadTemplate = () => {
-    const headers = ['product_code', 'type', 'brands', 'lens_width', 'location', 'stock', 'cost_price', 'sale_price_s', 'sale_price_a', 'mrp', 'comments']
-    const blob = new Blob([headers.join(',') + '\n'], { type: 'text/csv;charset=utf-8;' })
+    const blob = new Blob([inventoryTemplateHeaders.join(',') + '\n'], { type: 'text/csv;charset=utf-8;' })
     triggerDownload(blob, 'inventory_template.csv')
   }
 
@@ -219,53 +224,9 @@ export default function InventoryTable({
       header: true,
       skipEmptyLines: true,
       complete: async results => {
-        const rows = results.data as CsvProductRow[]
-        const validRows: ProductUpsert[] = []
-        const rowErrors: string[] = []
-        const duplicateSkus: string[] = []
-
-        rows.forEach((row, index) => {
-          const rowNum = index + 2
-          if (!row.product_code || String(row.product_code).trim() === '') {
-            rowErrors.push(`Row ${rowNum}: Missing product_code`)
-            return
-          }
-          const product_code = String(row.product_code).trim()
-          const parseNumber = (val: unknown) => {
-            if (!val || String(val).trim() === '') return null
-            const num = parseFloat(String(val))
-            return isNaN(num) ? 'INVALID' : num
-          }
-          const stock = parseNumber(row.stock) || 0
-          const cp = parseNumber(row.cost_price)
-          const sps = parseNumber(row.sale_price_s)
-          const spa = parseNumber(row.sale_price_a)
-          const mrp = parseNumber(row.mrp)
-          if ([cp, sps, spa, mrp, stock].includes('INVALID')) {
-            rowErrors.push(`Row ${rowNum} (${product_code}): Invalid number format`)
-            return
-          }
-          validRows.push({
-            product_code,
-            lens_width: parseCsvText(row.lens_width),
-            brands: parseCsvText(row.brands),
-            location: parseCsvText(row.location),
-            type: parseCsvText(row.type),
-            comments: parseCsvText(row.comments),
-            stock: stock as number,
-            cost_price: cp as number | null,
-            sale_price_s: sps as number | null,
-            sale_price_a: spa as number | null,
-            mrp: mrp as number | null,
-          })
-        })
-
-        const uniqueRowsMap = new Map<string, ProductUpsert>()
-        for (const row of validRows) {
-          if (uniqueRowsMap.has(row.product_code)) duplicateSkus.push(row.product_code)
-          uniqueRowsMap.set(row.product_code, row)
-        }
-        const uniqueValidRows = Array.from(uniqueRowsMap.values())
+        const rows = results.data as InventoryCsvRow[]
+        const mode = uploadMode === 'rewrite' && !isAdmin ? 'safe' : uploadMode
+        const { uniqueValidRows, rowErrors, duplicateSkus } = normalizeInventoryCsvRows(rows, mode)
 
         if (uniqueValidRows.length === 0) {
           showFeedback('No valid products found. Make sure "product_code" column exists.', 'error')
@@ -281,7 +242,7 @@ export default function InventoryTable({
         if (error) {
           showFeedback('Error uploading CSV: ' + error.message, 'error', true)
         } else if (data) {
-          let msg = `Successfully saved ${data.length} products.`
+          let msg = `Successfully saved ${data.length} products using ${uploadModeLabels[mode]}.`
           if (duplicateSkus.length > 0) {
             const uniqueDupes = Array.from(new Set(duplicateSkus))
             msg += `\n\n${uniqueDupes.length} duplicate SKUs were merged (last row kept):\n` +
@@ -318,7 +279,6 @@ export default function InventoryTable({
   const isLowStockPreset = filters.stock.mode === 'low'
   const isMissingPricingPreset =
     filters.cost.mode === 'missing' ||
-    filters.sale_s.mode === 'missing' ||
     filters.sale_a.mode === 'missing' ||
     filters.mrp.mode === 'missing'
   const isMissingMrpPreset = filters.mrp.mode === 'missing'
@@ -330,7 +290,6 @@ export default function InventoryTable({
     if (isMissingPricingPreset) {
       replaceAll({
         cost:   { mode: 'any' },
-        sale_s: { mode: 'any' },
         sale_a: { mode: 'any' },
         mrp:    { mode: 'any' },
       })
@@ -338,7 +297,6 @@ export default function InventoryTable({
       // Apply to whichever of these are not already set; default to all of them.
       replaceAll({
         cost:   { mode: 'missing' },
-        sale_s: { mode: 'missing' },
         sale_a: { mode: 'missing' },
         mrp:    { mode: 'missing' },
       })
@@ -394,9 +352,28 @@ export default function InventoryTable({
             <Upload size={14} />
             {isUploading ? 'Uploading…' : 'Bulk upload'}
           </Button>
+          <div className="flex min-w-[260px] items-center gap-2">
+            <Label htmlFor="inventory-upload-mode" className="shrink-0 text-[12px] text-ink-500">
+              Mode
+            </Label>
+            <Select
+              id="inventory-upload-mode"
+              value={uploadMode}
+              onChange={e => setUploadMode(e.target.value as InventoryUploadMode)}
+              className="h-8 text-[12.5px]"
+              aria-label="Inventory upload mode"
+            >
+              <option value="safe">Safe update</option>
+              <option value="stock-only">Stock only</option>
+              <option value="rewrite">Full rewrite</option>
+            </Select>
+          </div>
           <Button onClick={handleExportData} variant="secondary" size="sm" className="ml-auto">
             <Download size={14} /> Export
           </Button>
+          <div className="basis-full text-[11.5px] leading-relaxed text-ink-500">
+            {uploadModeHelp[uploadMode]}
+          </div>
         </div>
       )}
 
@@ -435,11 +412,7 @@ export default function InventoryTable({
                   <Input type="number" value={newProduct.cost_price ?? ''}
                     onChange={e => setNewProduct({ ...newProduct, cost_price: parseFloat(e.target.value) })} />
                 </FormField>
-                <FormField label="Sale Price S (Store)">
-                  <Input type="number" value={newProduct.sale_price_s ?? ''}
-                    onChange={e => setNewProduct({ ...newProduct, sale_price_s: parseFloat(e.target.value) })} />
-                </FormField>
-                <FormField label="Sale Price A (Accounts)">
+                <FormField label="Sale price A">
                   <Input type="number" value={newProduct.sale_price_a ?? ''}
                     onChange={e => setNewProduct({ ...newProduct, sale_price_a: parseFloat(e.target.value) })} />
                 </FormField>
@@ -526,9 +499,8 @@ export default function InventoryTable({
                 {isAdmin && showAllColumns && <Th>Location</Th>}
                 <Th>Stock</Th>
                 {isAdmin && <Th className="text-right">Cost</Th>}
-                <Th className="text-right">Sale S</Th>
-                {isAdmin && <Th className="text-right">Sale A</Th>}
-                {isAdmin && <Th className="text-right">MRP</Th>}
+                {isAdmin && <Th className="text-right">Sale price A</Th>}
+                <Th className="text-right">MRP</Th>
                 {isAdmin && showAllColumns && <Th>Comments</Th>}
                 {isAdmin && showAllColumns && <Th>Added</Th>}
                 {isAdmin && <Th className="w-10" aria-label="Actions" />}
@@ -550,9 +522,8 @@ export default function InventoryTable({
                   <StockCell stock={p.stock} />
                 </Td>
                 {isAdmin && <Td className="text-right">{fmt(p.cost_price)}</Td>}
-                <Td className="text-right">{fmt(p.sale_price_s)}</Td>
                 {isAdmin && <Td className="text-right">{fmt(p.sale_price_a)}</Td>}
-                {isAdmin && <Td className="text-right">{fmt(p.mrp)}</Td>}
+                <Td className="text-right">{fmt(p.mrp)}</Td>
                 {isAdmin && showAllColumns && (
                   <Td className="max-w-[180px] truncate text-ink-500" title={p.comments ?? ''}>
                     {p.comments ?? ''}
@@ -577,8 +548,8 @@ export default function InventoryTable({
               <TableEmpty
                 colSpan={
                   isAdmin
-                    ? showAllColumns ? 13 : 9
-                    : 6
+                    ? showAllColumns ? 12 : 8
+                    : 5
                 }
                 message={
                   activeCount > 0 || filters.q
@@ -647,8 +618,7 @@ export default function InventoryTable({
 
         <FilterSection title="Pricing">
           <PresencePicker label="Cost"     value={filters.cost}   onChange={v => setField('cost', v)} />
-          <PresencePicker label="Sale S"   value={filters.sale_s} onChange={v => setField('sale_s', v)} />
-          <PresencePicker label="Sale A"   value={filters.sale_a} onChange={v => setField('sale_a', v)} />
+          <PresencePicker label="Sale price A" value={filters.sale_a} onChange={v => setField('sale_a', v)} />
           <PresencePicker label="MRP"      value={filters.mrp}    onChange={v => setField('mrp', v)} />
         </FilterSection>
 
@@ -747,7 +717,7 @@ function renderActiveChips(
         onClick={openPanel} onRemove={() => clearField('stock')} />
     )
   }
-  for (const k of ['cost', 'sale_s', 'sale_a', 'mrp'] as const) {
+  for (const k of ['cost', 'sale_a', 'mrp'] as const) {
     if (filters[k].mode !== 'any') {
       chips.push(
         <FilterChip key={k} label={`${labelOf(k)}:`} value={summarizePresence(filters[k])}
@@ -765,8 +735,8 @@ function renderActiveChips(
   return chips
 }
 
-const labelOf = (k: 'cost' | 'sale_s' | 'sale_a' | 'mrp') =>
-  ({ cost: 'Cost', sale_s: 'Sale S', sale_a: 'Sale A', mrp: 'MRP' }[k])
+const labelOf = (k: 'cost' | 'sale_a' | 'mrp') =>
+  ({ cost: 'Cost', sale_a: 'Sale price A', mrp: 'MRP' }[k])
 
 function summarizeArray(arr: string[]) {
   if (arr.length === 0) return ''
