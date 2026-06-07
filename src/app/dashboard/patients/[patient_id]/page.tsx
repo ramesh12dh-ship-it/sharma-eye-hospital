@@ -17,11 +17,15 @@ export default async function PatientFilePage({ params }: { params: Promise<{ pa
     return <AccessDenied resource="this patient file" />
   }
 
-  const [patientRes, prescriptionsRes, salesRes, ordersRes] = await Promise.all([
-    supabase.from('patients')
-      .select('patient_id, name, phone, age, address, created_at')
-      .eq('patient_id', patient_id)
-      .single(),
+  const { data: patient } = await supabase
+    .from('patients')
+    .select('patient_id, name, phone, age, address, created_at')
+    .eq('patient_id', patient_id)
+    .single()
+
+  if (!patient) notFound()
+
+  const [prescriptionsRes, salesRes, ordersRes] = await Promise.all([
     supabase.from('prescriptions')
       .select('*')
       .eq('patient_id', patient_id)
@@ -36,9 +40,6 @@ export default async function PatientFilePage({ params }: { params: Promise<{ pa
       .eq('patient_id', patient_id)
       .order('created_at', { ascending: false }),
   ])
-
-  const patient = patientRes.data
-  if (!patient) notFound()
 
   const canWrite = hasRole(userRoles, 'optician')
   const canUpdateOrders = hasRole(userRoles, 'store_manager')

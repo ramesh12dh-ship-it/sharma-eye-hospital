@@ -2,7 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { cache } from 'react'
 
-export async function createClient() {
+export const createClient = cache(async () => {
   const cookieStore = await cookies()
 
   return createServerClient(
@@ -25,7 +25,7 @@ export async function createClient() {
       },
     }
   )
-}
+})
 
 // Deduplicated per-request via React cache — layout + page share one round-trip.
 export const getAuthUser = cache(async () => {
@@ -35,9 +35,8 @@ export const getAuthUser = cache(async () => {
 })
 
 export const getUserRoles = cache(async () => {
-  const user = await getAuthUser()
+  const [user, supabase] = await Promise.all([getAuthUser(), createClient()])
   if (!user) return []
-  const supabase = await createClient()
   const { data } = await supabase.from('user_roles').select('role').eq('user_id', user.id)
   return data?.map(r => r.role) ?? []
 })
