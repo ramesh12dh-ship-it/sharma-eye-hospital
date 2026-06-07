@@ -1,4 +1,4 @@
-import { createClient } from '@/utils/supabase/server'
+import { getAuthUser, getUserRoles } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import { SidebarNav } from '@/components/nav/SidebarNav'
 import { Toaster } from '@/components/ui/Toast'
@@ -8,16 +8,8 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const [user, userRoles] = await Promise.all([getAuthUser(), getUserRoles()])
   if (!user) redirect('/login')
-
-  const { data: roleData } = await supabase
-    .from('user_roles')
-    .select('role')
-    .eq('user_id', user.id)
-
-  const userRoles = roleData?.map(r => r.role) ?? []
 
   if (userRoles.length === 0) {
     redirect('/login?message=Staff access required. Ask an admin to assign a role.')

@@ -1,5 +1,5 @@
 import { Suspense } from 'react'
-import { createClient } from '@/utils/supabase/server'
+import { getAuthUser, getUserRoles, createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import ExportButton from './ExportButton'
 import ReportsTable from './ReportsTable'
@@ -36,17 +36,8 @@ const formatLabel = (d: Date) =>
   d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
 
 export default async function ReportsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
-  const supabase = await createClient()
-
-  const { data: { user } } = await supabase.auth.getUser()
+  const [user, userRoles, supabase] = await Promise.all([getAuthUser(), getUserRoles(), createClient()])
   if (!user) redirect('/login')
-
-  const { data: roleData } = await supabase
-    .from('user_roles')
-    .select('role')
-    .eq('user_id', user.id)
-
-  const userRoles = roleData?.map(r => r.role) ?? []
   const role = userRoles.includes('admin') ? 'admin' : (userRoles[0] ?? '')
 
   if (!hasRole(userRoles, 'accountant')) {

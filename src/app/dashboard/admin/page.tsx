@@ -1,4 +1,4 @@
-import { createClient } from '@/utils/supabase/server'
+import { getAuthUser, getUserRoles, createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import { hasRole, roleLabel } from '@/utils/roles'
 import UserManager from './UserManager'
@@ -7,17 +7,8 @@ import { AccessDenied } from '@/components/ui/AccessDenied'
 import { TableShell, TableScroll, Table, Thead, Th, Tr, Td } from '@/components/ui/Table'
 
 export default async function AdminDashboard() {
-  const supabase = await createClient()
-
-  const { data: { user } } = await supabase.auth.getUser()
+  const [user, userRoles, supabase] = await Promise.all([getAuthUser(), getUserRoles(), createClient()])
   if (!user) redirect('/login')
-
-  const { data: roleData } = await supabase
-    .from('user_roles')
-    .select('role')
-    .eq('user_id', user.id)
-
-  const userRoles = roleData?.map(r => r.role) ?? []
 
   if (!hasRole(userRoles, 'admin')) {
     return <AccessDenied resource="Admin tools" />
