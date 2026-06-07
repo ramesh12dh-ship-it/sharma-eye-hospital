@@ -1,7 +1,8 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { cache } from 'react'
 
-export async function createClient() {
+export const createClient = cache(async () => {
   const cookieStore = await cookies()
 
   return createServerClient(
@@ -18,12 +19,24 @@ export async function createClient() {
               cookieStore.set(name, value, options)
             )
           } catch {
-            // The `setAll` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing
-            // user sessions.
+            // ignored when called from a Server Component
           }
         },
       },
     }
   )
-}
+})
+
+// Deduplicated per-request via React cache — layout + page share one round-trip.
+export const getAuthUser = cache(async () => {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  return user
+})
+
+export const getUserRoles = cache(async () => {
+  const [user, supabase] = await Promise.all([getAuthUser(), createClient()])
+  if (!user) return []
+  const { data } = await supabase.from('user_roles').select('role').eq('user_id', user.id)
+  return data?.map(r => r.role) ?? []
+})
