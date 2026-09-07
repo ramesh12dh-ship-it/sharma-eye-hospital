@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, Package, ScanEye, Users, ClipboardList,
-  BarChart3, Shield, LogOut, Menu, X,
+  BarChart3, Shield, LogOut, Menu, X, Camera,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -31,6 +31,7 @@ function buildItems(userRoles: string[]): NavItem[] {
     { href: '/dashboard/pos', label: 'Opticals', icon: ScanEye, visible: has('store_manager') || has('receptionist') },
     { href: '/dashboard/patients', label: 'Patients', icon: Users, visible: has('receptionist') || has('store_manager') || has('optician') },
     { href: '/dashboard/orders', label: 'Orders', icon: ClipboardList, visible: has('store_manager') || has('receptionist') || has('optician') },
+    { href: '/dashboard/photo-stamp', label: 'Photo stamp', icon: Camera, visible: true },
     { href: '/dashboard/reports', label: 'Reports', icon: BarChart3, visible: has('accountant') },
     { href: '/dashboard/admin', label: 'Admin', icon: Shield, visible: has('admin') },
   ]
